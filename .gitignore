@@ -1,0 +1,44 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Database (local dev only)
+jobs.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Node
+node_modules/
+.npm
+
+# Frontend build output
+frontend/dist/
+frontend/.vite/
+
+# Secrets & env
+.env
+.env.*
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local config
+.claude/
+
+# Data folder (large files, not in repo)
+/data/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/

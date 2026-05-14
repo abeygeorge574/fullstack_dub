@@ -1,0 +1,203 @@
+/* ==========================================================================
+   POSTUDIO — Foundation tokens
+   Colors + Type. Loadable as a single stylesheet for any Postudio surface.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Poppins:wght@200;300;400;500;600;700;800&family=Orbitron:wght@400;500;600&display=swap');
+
+:root {
+  /* -------------------- PRIMARY -------------------- */
+  --color-slate-950: #020617;        /* root dark */
+  --color-slate-900: #0f172a;
+  --color-white: #FFFFFF;
+
+  --color-blue-700: #1d4ed8;
+  --color-blue-600: #2563eb;          /* primary action blue */
+  --color-blue-500: #3b82f6;
+  --color-blue-300: #93c5fd;
+
+  --color-yellow-400: #facc15;
+  --color-orange-400: #fb923c;
+  --color-red-400: #f87171;
+  --color-emerald-500: #10b981;
+
+  /* -------------------- SECONDARY (slate alpha scale on dark) ----------- */
+  --slate-80: rgba(2, 6, 23, 0.80);
+  --slate-60: rgba(2, 6, 23, 0.60);
+  --slate-50: rgba(2, 6, 23, 0.50);
+  --slate-40: rgba(2, 6, 23, 0.40);
+  --slate-30: rgba(2, 6, 23, 0.30);
+  --slate-20: rgba(2, 6, 23, 0.20);
+  --slate-10: rgba(2, 6, 23, 0.10);
+  --slate-5:  rgba(2, 6, 23, 0.05);
+
+  /* white alphas — for text/strokes on dark glass */
+  --white-80: rgba(255, 255, 255, 0.80);
+  --white-60: rgba(255, 255, 255, 0.60);
+  --white-50: rgba(255, 255, 255, 0.50);
+  --white-30: rgba(255, 255, 255, 0.30);
+  --white-20: rgba(255, 255, 255, 0.20);
+  --white-10: rgba(255, 255, 255, 0.10);
+  --white-5:  rgba(255, 255, 255, 0.05);
+
+  /* Toast tints */
+  --toast-yellow: #fef08a;
+  --toast-red:    #fca5a5;
+  --toast-emerald:#99f6e4;
+  --toast-blue:   #bfdbfe;
+
+  /* Modal / surface backgrounds (deep navy washes layered on slate-950) */
+  --modal-bg-1: #001965;
+  --modal-bg-2: #020617;
+
+  /* -------------------- SEMANTIC -------------------- */
+  --bg:           var(--color-slate-950);   /* app background, dark default */
+  --bg-elev-1:    #0a1430;                  /* card on dark */
+  --bg-elev-2:    #122046;                  /* modal */
+  --surface-light:#FFFFFF;
+  --surface-light-2:#F8FAFC;
+
+  --fg:           var(--color-white);
+  --fg-muted:     var(--white-60);
+  --fg-faint:     var(--white-30);
+  --fg-on-light:  #121212;                  /* near-black on light */
+  --fg-on-light-2:rgba(18,18,18,0.60);
+
+  --border:       var(--white-10);
+  --border-strong:var(--white-20);
+  --border-on-light:rgba(18,18,18,0.10);
+
+  --accent:       var(--color-blue-600);
+  --accent-hover: var(--color-blue-700);
+  --accent-fg:    #FFFFFF;
+
+  --success:      var(--color-emerald-500);
+  --warn:         var(--color-yellow-400);
+  --danger:       var(--color-red-400);
+  --info:         var(--color-blue-300);
+
+  /* Brand "create" gradient — used on PrimeGrad buttons + headlines */
+  --grad-create:  linear-gradient(90deg, #2af598 0%, #009efd 100%);
+  --grad-violet:  linear-gradient(90deg, #c471f5 0%, #fa71cd 100%);
+  --grad-aqua:    linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+  --grad-warm:    linear-gradient(90deg, #fa709a 0%, #fee140 100%);
+  --grad-bg-app1: linear-gradient(135deg, #651fff 0%, rgba(2,6,23,0.0) 100%);
+  --grad-bg-deep: linear-gradient(135deg, #09203f 0%, #537895 100%);
+
+  /* -------------------- TYPE -------------------- */
+  --font-display: 'Poppins', 'Inter', system-ui, sans-serif;
+  --font-sans:    'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-tagline: 'Inter', sans-serif; /* substitute for Gotham Book */
+  --font-mono:    'Orbitron', ui-monospace, SFMono-Regular, Menlo, monospace; /* used for clocks/countdowns */
+
+  /* -------------------- RADII / SPACING / SHADOW -------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl:20px;        /* canvas frames + hero cards */
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10:40px;
+  --space-12:48px;
+  --space-16:64px;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.20);
+  --shadow-md: 0 6px 16px rgba(0,0,0,0.30);
+  --shadow-lg: 0 24px 48px rgba(0,0,0,0.45);
+  --shadow-glow-blue: 0 0 0 3px rgba(37,99,235,0.20);
+  --shadow-press: inset 0 0 0 1px rgba(255,255,255,0.10);
+}
+
+/* =====================================================================
+   TYPE STYLES — derived from the Figma "Typography" sheet
+   H1 Poppins 54/64.8 / 400  — Page heading
+   H2 Poppins 40/56  / 400   — OTP / hero
+   H3 Poppins 24/56  / 400   — Section heading
+   H4 Inter   26/31.2/300    — Card title
+   H5 Inter   26/36.4/300    — Subheading
+   H6 Inter   18/21.8/500    — Button
+   p-lg Inter 16/22.4/400    — Paragraph
+   p    Inter 15/21  /400    — Content
+   p-stg Inter 15/21 /500    — Strong / button
+   p-mid Inter 14/19.6/500   — Footer
+   p-sm  Inter 12/16.8/400   — Placeholder
+   p-xs  Inter 10/12 /400    — Date & Time
+   tagline Inter (Gotham) 14/14/400 — #fixitinpostudio
+   countdown Orbitron 30/36/400
+   ===================================================================== */
+
+.h1, h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 54px;
+  line-height: 64.8px;
+  letter-spacing: -0.01em;
+}
+.h2, h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 56px;
+}
+.h3, h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 1.4;
+}
+.h4, h4 {
+  font-family: var(--font-sans);
+  font-weight: 300;
+  font-size: 26px;
+  line-height: 31.2px;
+}
+.h5, h5 {
+  font-family: var(--font-sans);
+  font-weight: 300;
+  font-size: 26px;
+  line-height: 36.4px;
+}
+.h6, h6 {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 21.8px;
+}
+
+.p-lg     { font-family: var(--font-sans); font-weight: 400; font-size: 16px; line-height: 22.4px; }
+.p, p     { font-family: var(--font-sans); font-weight: 400; font-size: 15px; line-height: 21px; }
+.p-stg    { font-family: var(--font-sans); font-weight: 500; font-size: 15px; line-height: 21px; }
+.p-mid    { font-family: var(--font-sans); font-weight: 500; font-size: 14px; line-height: 19.6px; }
+.p-sm     { font-family: var(--font-sans); font-weight: 400; font-size: 12px; line-height: 16.8px; }
+.p-sm-stg { font-family: var(--font-sans); font-weight: 500; font-size: 12px; line-height: 16.8px; }
+.p-sm-u   { font-family: var(--font-sans); font-weight: 400; font-size: 12px; line-height: 16.8px; text-decoration: underline; }
+.p-xs     { font-family: var(--font-sans); font-weight: 400; font-size: 10px; line-height: 12px; }
+.p-xs-u   { font-family: var(--font-sans); font-weight: 400; font-size: 10px; line-height: 12px; text-decoration: underline; }
+.p-xs-caps{ font-family: var(--font-sans); font-weight: 500; font-size: 10px; line-height: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.p-xs-bold{ font-family: var(--font-sans); font-weight: 700; font-size: 10px; line-height: 10px; }
+
+.tagline  { font-family: var(--font-tagline); font-weight: 400; font-size: 14px; line-height: 14px; opacity: 0.8; }
+.countdown{ font-family: var(--font-mono); font-weight: 400; font-size: 30px; line-height: 36px; font-variant-numeric: tabular-nums; }
+
+/* Gradient headline helper */
+.text-grad-create {
+  background: var(--grad-create);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-grad-violet {
+  background: var(--grad-violet);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

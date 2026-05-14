@@ -1,0 +1,32 @@
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9      # required by FastAPI for UploadFile
+aiofiles>=24.1.0             # async file I/O
+
+# ── Database ──────────────────────────────────────────────────────────────────
+# SQLAlchemy ORM only — no raw sqlite3.
+# Swap DATABASE_URL in .env to move to Postgres (no code changes required).
+sqlalchemy>=2.0.30
+
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.1
+
+# ── Audio extraction ──────────────────────────────────────────────────────────
+ffmpeg-python>=0.2.0         # ffmpeg/ffprobe bindings (ffmpeg binary installed via apt)
+
+# ── Audio analysis (waveform computation) ─────────────────────────────────────
+librosa>=0.10.2
+soundfile>=0.12.1
+numpy>=1.26.0,<2.0.0         # librosa 0.10.x requires numpy <2
+
+# ── Stem separation ───────────────────────────────────────────────────────────
+# Mac local dev (Apple Silicon, no CUDA):  audio-separator[cpu]
+# GCP T4 VM / Docker production:           audio-separator[gpu]
+#
+# [cpu] uses CPU + MPS on Apple Silicon.
+# [gpu] bundles CUDA PyTorch — only installable on Linux x86 with CUDA drivers.
+# Max available version as of 2025: 0.18.0.
+#
+# The first run downloads the BS-RoFormer checkpoint (~200 MB) to SEPARATOR_MODEL_DIR.
+audio-separator[cpu]>=0.17.0
