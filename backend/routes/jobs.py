@@ -251,7 +251,7 @@ def list_jobs(
 ) -> list[dict[str, Any]]:
     jobs = (
         db.query(models.Job)
-        .order_by(models.Job.created_at.desc())
+        .order_by(models.Job.updated_at.desc())
         .limit(max(1, min(limit, 50)))
         .all()
     )
