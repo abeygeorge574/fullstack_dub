@@ -84,8 +84,8 @@ function LoadingScreen({ jobData }) {
 }
 
 export default function App() {
-  // 'init' while we check localStorage, then 'upload' | 'loading' | 'active' | 'error'
-  const [appState, setAppState] = useState('init');
+  // Always start on upload screen; user resumes from the recents list
+  const [appState, setAppState] = useState('upload');
   const [jobId, setJobId]       = useState(null);
   const [jobData, setJobData]   = useState(null);
   const [vocWave, setVocWave]   = useState(null);
@@ -95,16 +95,6 @@ export default function App() {
   const [uploadError, setUploadError] = useState(null);
 
   const stateSetters = { setJobId, setJobData, setVocWave, setInsWave, setLoadError, setAppState };
-
-  // ── On mount: try to restore from localStorage ──────────────────────────────
-  useEffect(() => {
-    const savedId = localStorage.getItem(STORAGE_KEY);
-    if (!savedId) { setAppState('upload'); return; }
-    loadJob(savedId, stateSetters).catch(() => {
-      localStorage.removeItem(STORAGE_KEY);
-      setAppState('upload');
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleResume = (id) => {
     localStorage.setItem(STORAGE_KEY, id);
@@ -193,8 +183,6 @@ export default function App() {
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  if (appState === 'init') return null;
-
   if (appState === 'upload') {
     return <UploadScreen onUpload={handleUpload} uploading={uploading} uploadError={uploadError} onResume={handleResume} />;
   }
