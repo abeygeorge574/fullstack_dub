@@ -1,11 +1,9 @@
-"""Stage 4 — Gemini translation of transcribed segments.
+"""Stage 4 — Gemini translation of transcribed segments (Hindi → English).
 
-Requires:
-  GEMINI_API_KEY — place in .env
-  GEMINI_MODEL   — optional, defaults to gemini-1.5-pro
+Prompt file: backend/prompts/translation.txt  (edit to customise)
 
-Prompt is loaded from backend/prompts/translation.txt.
-To customise the translation prompt, edit that file directly.
+Required env vars: same as transcription (GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_PROJECT)
+Optional: GOOGLE_CLOUD_LOCATION, GEMINI_MODEL
 """
 
 import logging
@@ -15,9 +13,11 @@ logger = logging.getLogger(__name__)
 
 _PROMPT_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts", "translation.txt")
 _DEFAULT_PROMPT = (
-    "Translate the following Hindi text into natural spoken English for film dubbing. "
-    "Keep the translation concise — it must fit within the same duration as the original. "
-    "Output only the English translation."
+    "You are a professional Hindi-to-English translator for film dubbing. "
+    "Translate the following Hindi text into natural, spoken English. "
+    "The translation must fit within the same duration as the original — keep it concise. "
+    "Preserve the speaker's tone and intent. "
+    "Output only the English translation — no explanations, no alternatives."
 )
 
 
@@ -31,18 +31,12 @@ def _load_prompt() -> str:
 
 
 def translate_segments(job_id: str, segments: list[dict]) -> list[dict]:
-    """Translate every segment and return updated segments with .tx filled."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "GEMINI_API_KEY is not set. Add it to your .env file as GEMINI_API_KEY=your_key_here"
-        )
+    """Translate every segment. Returns updated segments with .tx filled."""
+    from .gemini_client import get_model
 
-    import google.generativeai as genai
-    genai.configure(api_key=api_key)
-
-    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
-    model = genai.GenerativeModel(model_name)
+    # Translation is text-only — flash is faster and cheaper than pro
+    model_name = os.getenv("TRANSLATION_MODEL", os.getenv("GEMINI_MODEL", "gemini-1.5-flash-002"))
+    model = get_model(model_name)
     prompt_prefix = _load_prompt()
 
     updated = []
@@ -53,16 +47,16 @@ def translate_segments(job_id: str, segments: list[dict]) -> list[dict]:
             continue
 
         try:
-            full_prompt = f"{prompt_prefix}\n\nHindi text: {source_text}"
+            full_prompt = f"{prompt_prefix}\n\nHindi: {source_text}"
             response = model.generate_content(full_prompt)
-            tx = response.text.strip() if response.text else ""
+            tx = (response.text or "").strip()
             updated.append({**seg, "tx": tx, "status": "translated"})
             logger.info(
-                "[translation] job=%s seg=%s translated: %d chars",
-                job_id, seg["id"], len(tx),
+                "[translation] job=%s seg=%s: %d chars → %d chars",
+                job_id, seg["id"], len(source_text), len(tx),
             )
-        except Exception as e:
-            logger.error("[translation] job=%s seg=%s failed: %s", job_id, seg["id"], e)
+        except Exception as exc:
+            logger.error("[translation] job=%s seg=%s failed: %s", job_id, seg["id"], exc)
             updated.append({**seg, "tx": "", "status": "error"})
 
     return updated

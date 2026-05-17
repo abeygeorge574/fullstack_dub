@@ -42,5 +42,7 @@ scikit-learn>=1.4.0
 # Audio resampling (required by pyannote internals)
 resampy>=0.4.2
 
-# ── Stage 3/4: Transcription + Translation via Gemini ────────────────────────
-google-generativeai>=0.7.0
+# ── Stage 3/4: Transcription + Translation via Gemini (Vertex AI) ────────────
+# Auth: GOOGLE_APPLICATION_CREDENTIALS → service-account JSON
+# google-auth is bundled with google-cloud-aiplatform
+google-cloud-aiplatform>=1.60.0
