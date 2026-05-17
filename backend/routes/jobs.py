@@ -53,10 +53,14 @@ def _job_response(job: models.Job, storage: StorageBackend) -> dict[str, Any]:
         "error_message": job.error_message,
         "created_at": job.created_at.isoformat() + "Z" if job.created_at else None,
         "committed_at": job.committed_at.isoformat() + "Z" if job.committed_at else None,
-        # URLs the browser can use directly
         "vocals_url": storage.get_url(job.id, "vocals.wav") if job.vocals_path else None,
         "instrumental_url": storage.get_url(job.id, "instrumental.wav") if job.instrumental_path else None,
         "htdemucs_vocals_url": storage.get_url(job.id, "htdemucs_vocals.wav") if job.htdemucs_vocals_path else None,
+        "diarization_status": job.diarization_status,
+        "transcription_status": job.transcription_status,
+        "translation_status": job.translation_status,
+        "tts_status": job.tts_status,
+        "lipsync_status": job.lipsync_status,
     }
 
 
@@ -559,7 +563,6 @@ def confirm_stems(
     )
     voc_bytes, ins_bytes, htd_bytes = _apply(voc_path, ins_path, corrections, htd_path)
 
-    # Choose winner vocal track
     winner_bytes = (htd_bytes if htd_bytes is not None else voc_bytes) if body.vocal_winner == "htd" else voc_bytes
 
     storage.write_bytes(job_id, "vocals_final.wav", winner_bytes)
@@ -573,3 +576,454 @@ def confirm_stems(
 
     logger.info("[confirm_stems] job=%s committed at %s", job_id, job.committed_at)
     return _job_response(job, storage)
+
+
+# ── Stage 2: Diarization ───────────────────────────────────────────────────────
+
+def _run_diarization_bg(job_id: str) -> None:
+    from pipeline.diarization import run_diarization
+    db = SessionLocal()
+    storage = get_storage()
+    try:
+        job = db.query(models.Job).filter(models.Job.id == job_id).first()
+        if not job:
+            return
+        job.diarization_status = "running"
+        db.commit()
+        result = run_diarization(job_id, storage)
+        job.speakers_json = json.dumps(result["speakers"])
+        job.segments_json = json.dumps(result["segments"])
+        job.diarization_status = "ready"
+        db.commit()
+        logger.info("[diarization] job=%s done: %d speakers %d segments",
+                    job_id, len(result["speakers"]), len(result["segments"]))
+    except Exception as exc:
+        logger.exception("[diarization] job=%s failed: %s", job_id, exc)
+        try:
+            db.rollback()
+            job = db.query(models.Job).filter(models.Job.id == job_id).first()
+            if job:
+                job.diarization_status = "error"
+                job.diarization_error = str(exc)[:2000]
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@router.post("/jobs/{job_id}/run-diarization")
+def run_diarization_route(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    if job.current_stage < 2:
+        raise HTTPException(status_code=400, detail="Confirm stems first")
+    job.diarization_status = "running"
+    job.diarization_error = None
+    db.commit()
+    background_tasks.add_task(_run_diarization_bg, job_id)
+    return {"ok": True, "status": "running"}
+
+
+@router.get("/jobs/{job_id}/diarization")
+def get_diarization(
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    return {
+        "status": job.diarization_status,
+        "error": job.diarization_error,
+        "speakers": json.loads(job.speakers_json or "[]"),
+        "segments": json.loads(job.segments_json or "[]"),
+    }
+
+
+class _DiarizationConfirmBody(BaseModel):
+    speakers: list[dict[str, Any]]
+    segments: list[dict[str, Any]]
+
+
+@router.post("/jobs/{job_id}/confirm-diarization")
+def confirm_diarization(
+    job_id: str,
+    body: _DiarizationConfirmBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    job.speakers_json = json.dumps(body.speakers)
+    job.segments_json = json.dumps(body.segments)
+    job.diarization_status = "ready"
+    job.current_stage = 3
+    db.commit()
+    logger.info("[confirm_diarization] job=%s → stage 3", job_id)
+    return {"ok": True, "current_stage": job.current_stage}
+
+
+# ── Stage 3: Transcription ─────────────────────────────────────────────────────
+
+def _run_transcription_bg(job_id: str) -> None:
+    from pipeline.transcription import transcribe_segments
+    db = SessionLocal()
+    storage = get_storage()
+    try:
+        job = db.query(models.Job).filter(models.Job.id == job_id).first()
+        if not job:
+            return
+        job.transcription_status = "running"
+        db.commit()
+        segments = json.loads(job.segments_json or "[]")
+        updated = transcribe_segments(job_id, storage, segments)
+        job.segments_json = json.dumps(updated)
+        job.transcription_status = "ready"
+        db.commit()
+        logger.info("[transcription] job=%s done: %d segments", job_id, len(updated))
+    except Exception as exc:
+        logger.exception("[transcription] job=%s failed: %s", job_id, exc)
+        try:
+            db.rollback()
+            job = db.query(models.Job).filter(models.Job.id == job_id).first()
+            if job:
+                job.transcription_status = "error"
+                job.transcription_error = str(exc)[:2000]
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@router.post("/jobs/{job_id}/run-transcription")
+def run_transcription_route(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    if job.current_stage < 3:
+        raise HTTPException(status_code=400, detail="Confirm diarization first")
+    job.transcription_status = "running"
+    job.transcription_error = None
+    db.commit()
+    background_tasks.add_task(_run_transcription_bg, job_id)
+    return {"ok": True, "status": "running"}
+
+
+@router.get("/jobs/{job_id}/transcription")
+def get_transcription(
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    return {
+        "status": job.transcription_status,
+        "error": job.transcription_error,
+        "speakers": json.loads(job.speakers_json or "[]"),
+        "segments": json.loads(job.segments_json or "[]"),
+    }
+
+
+class _SegmentsBody(BaseModel):
+    segments: list[dict[str, Any]]
+    speakers: list[dict[str, Any]] = []
+
+
+@router.post("/jobs/{job_id}/confirm-transcription")
+def confirm_transcription(
+    job_id: str,
+    body: _SegmentsBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    job.segments_json = json.dumps(body.segments)
+    if body.speakers:
+        job.speakers_json = json.dumps(body.speakers)
+    job.transcription_status = "ready"
+    job.current_stage = 4
+    db.commit()
+    logger.info("[confirm_transcription] job=%s → stage 4", job_id)
+    return {"ok": True, "current_stage": job.current_stage}
+
+
+# ── Stage 4: Translation ───────────────────────────────────────────────────────
+
+def _run_translation_bg(job_id: str) -> None:
+    from pipeline.translation import translate_segments
+    db = SessionLocal()
+    try:
+        job = db.query(models.Job).filter(models.Job.id == job_id).first()
+        if not job:
+            return
+        job.translation_status = "running"
+        db.commit()
+        segments = json.loads(job.segments_json or "[]")
+        updated = translate_segments(job_id, segments)
+        job.segments_json = json.dumps(updated)
+        job.translation_status = "ready"
+        db.commit()
+        logger.info("[translation] job=%s done: %d segments", job_id, len(updated))
+    except Exception as exc:
+        logger.exception("[translation] job=%s failed: %s", job_id, exc)
+        try:
+            db.rollback()
+            job = db.query(models.Job).filter(models.Job.id == job_id).first()
+            if job:
+                job.translation_status = "error"
+                job.translation_error = str(exc)[:2000]
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@router.post("/jobs/{job_id}/run-translation")
+def run_translation_route(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    if job.current_stage < 4:
+        raise HTTPException(status_code=400, detail="Confirm transcription first")
+    job.translation_status = "running"
+    job.translation_error = None
+    db.commit()
+    background_tasks.add_task(_run_translation_bg, job_id)
+    return {"ok": True, "status": "running"}
+
+
+@router.get("/jobs/{job_id}/translation")
+def get_translation(
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    return {
+        "status": job.translation_status,
+        "error": job.translation_error,
+        "speakers": json.loads(job.speakers_json or "[]"),
+        "segments": json.loads(job.segments_json or "[]"),
+    }
+
+
+@router.post("/jobs/{job_id}/confirm-translation")
+def confirm_translation(
+    job_id: str,
+    body: _SegmentsBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    job.segments_json = json.dumps(body.segments)
+    if body.speakers:
+        job.speakers_json = json.dumps(body.speakers)
+    job.translation_status = "ready"
+    job.current_stage = 5
+    db.commit()
+    logger.info("[confirm_translation] job=%s → stage 5", job_id)
+    return {"ok": True, "current_stage": job.current_stage}
+
+
+# ── Stage 5: TTS ───────────────────────────────────────────────────────────────
+
+def _run_tts_bg(job_id: str, speaker_voice_map: dict) -> None:
+    """speaker_voice_map: {speaker_id: voice_id_or_null}"""
+    from pipeline.tts import clone_speaker_voice, generate_segment_audio
+    db = SessionLocal()
+    storage = get_storage()
+    try:
+        job = db.query(models.Job).filter(models.Job.id == job_id).first()
+        if not job:
+            return
+        job.tts_status = "running"
+        db.commit()
+
+        speakers = json.loads(job.speakers_json or "[]")
+        segments = json.loads(job.segments_json or "[]")
+
+        # Build segments-by-speaker map
+        segs_by_spk: dict[str, list] = {sp["id"]: [] for sp in speakers}
+        for seg in segments:
+            if seg["speakerId"] in segs_by_spk:
+                segs_by_spk[seg["speakerId"]].append(seg)
+
+        # Clone voices for speakers that requested it
+        voice_map = dict(speaker_voice_map)
+        for sp in speakers:
+            if voice_map.get(sp["id"]) == "clone":
+                try:
+                    vid = clone_speaker_voice(job_id, sp, storage, segs_by_spk[sp["id"]])
+                    voice_map[sp["id"]] = vid
+                except Exception as e:
+                    logger.error("[tts] clone failed for %s: %s", sp["id"], e)
+                    voice_map[sp["id"]] = None
+
+        # Generate audio per segment
+        updated_segs = []
+        for seg in segments:
+            voice_id = voice_map.get(seg["speakerId"])
+            if not voice_id or not (seg.get("tx") or seg.get("text")):
+                updated_segs.append({**seg, "status": "skipped"})
+                continue
+            try:
+                filename = generate_segment_audio(job_id, seg, voice_id, storage)
+                updated_segs.append({**seg, "status": "audio-ready", "audioFile": filename})
+            except Exception as e:
+                logger.error("[tts] generate failed for seg %s: %s", seg["id"], e)
+                updated_segs.append({**seg, "status": "error"})
+
+        # Persist voice_id back into speakers
+        updated_spks = []
+        for sp in speakers:
+            vid = voice_map.get(sp["id"])
+            updated_spks.append({**sp, "voiceId": vid} if vid else sp)
+
+        job.speakers_json = json.dumps(updated_spks)
+        job.segments_json = json.dumps(updated_segs)
+        job.tts_status = "ready"
+        db.commit()
+        logger.info("[tts] job=%s done", job_id)
+    except Exception as exc:
+        logger.exception("[tts] job=%s failed: %s", job_id, exc)
+        try:
+            db.rollback()
+            job = db.query(models.Job).filter(models.Job.id == job_id).first()
+            if job:
+                job.tts_status = "error"
+                job.tts_error = str(exc)[:2000]
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+class _TTSRunBody(BaseModel):
+    speaker_voice_map: dict[str, str] = {}
+
+
+@router.post("/jobs/{job_id}/run-tts")
+def run_tts_route(
+    job_id: str,
+    body: _TTSRunBody,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    if job.current_stage < 5:
+        raise HTTPException(status_code=400, detail="Confirm translation first")
+    job.tts_status = "running"
+    job.tts_error = None
+    db.commit()
+    background_tasks.add_task(_run_tts_bg, job_id, body.speaker_voice_map)
+    return {"ok": True, "status": "running"}
+
+
+@router.get("/jobs/{job_id}/tts")
+def get_tts(
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    return {
+        "status": job.tts_status,
+        "error": job.tts_error,
+        "speakers": json.loads(job.speakers_json or "[]"),
+        "segments": json.loads(job.segments_json or "[]"),
+    }
+
+
+@router.get("/jobs/{job_id}/tts/audio/{segment_id}")
+def stream_tts_audio(
+    job_id: str,
+    segment_id: str,
+    db: Session = Depends(get_db),
+    storage: StorageBackend = Depends(get_storage),
+):
+    job = _job_or_404(job_id, db)
+    filename = f"tts_{segment_id}.wav"
+    if not storage.exists(job_id, filename):
+        raise HTTPException(status_code=404, detail=f"TTS audio not found for segment {segment_id}")
+    return FileResponse(
+        storage.get_local_path(job_id, filename),
+        media_type="audio/wav",
+        headers={"Accept-Ranges": "bytes"},
+    )
+
+
+@router.post("/jobs/{job_id}/confirm-tts")
+def confirm_tts(
+    job_id: str,
+    body: _SegmentsBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    job.segments_json = json.dumps(body.segments)
+    if body.speakers:
+        job.speakers_json = json.dumps(body.speakers)
+    job.tts_status = "ready"
+    job.current_stage = 6
+    db.commit()
+    logger.info("[confirm_tts] job=%s → stage 6", job_id)
+    return {"ok": True, "current_stage": job.current_stage}
+
+
+# ── Stage 6: Lipsync ───────────────────────────────────────────────────────────
+
+def _run_lipsync_bg(job_id: str) -> None:
+    db = SessionLocal()
+    try:
+        job = db.query(models.Job).filter(models.Job.id == job_id).first()
+        if not job:
+            return
+        job.lipsync_status = "running"
+        db.commit()
+        # TODO: integrate lipsync model
+        job.lipsync_status = "ready"
+        db.commit()
+        logger.info("[lipsync] job=%s done (placeholder)", job_id)
+    except Exception as exc:
+        logger.exception("[lipsync] job=%s failed: %s", job_id, exc)
+        try:
+            db.rollback()
+            job = db.query(models.Job).filter(models.Job.id == job_id).first()
+            if job:
+                job.lipsync_status = "error"
+                job.lipsync_error = str(exc)[:2000]
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@router.post("/jobs/{job_id}/run-lipsync")
+def run_lipsync_route(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    if job.current_stage < 6:
+        raise HTTPException(status_code=400, detail="Confirm TTS first")
+    job.lipsync_status = "running"
+    job.lipsync_error = None
+    db.commit()
+    background_tasks.add_task(_run_lipsync_bg, job_id)
+    return {"ok": True, "status": "running"}
+
+
+@router.get("/jobs/{job_id}/lipsync")
+def get_lipsync(
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id, db)
+    return {
+        "status": job.lipsync_status,
+        "error": job.lipsync_error,
+        "video_path": job.lipsync_video_path,
+    }

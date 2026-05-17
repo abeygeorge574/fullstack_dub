@@ -31,5 +31,16 @@ numpy>=1.26.0,<2.0.0         # librosa 0.10.x requires numpy <2
 # HTDemucs-FT downloads ~300 MB checkpoint on first run to SEPARATOR_MODEL_DIR.
 audio-separator[cpu]>=0.17.0
 
-# ── ElevenLabs (audio isolation for vocals track) ─────────────────────────────
+# ── ElevenLabs (TTS + voice cloning + lipsync) ───────────────────────────────
 elevenlabs>=1.0.0
+
+# ── Stage 2: Diarization ──────────────────────────────────────────────────────
+# Speaker embedding model (requires HF_TOKEN + accepting model terms on HF).
+pyannote.audio>=3.1.0
+# Clustering for speaker assignment
+scikit-learn>=1.4.0
+# Audio resampling (required by pyannote internals)
+resampy>=0.4.2
+
+# ── Stage 3/4: Transcription + Translation via Gemini ────────────────────────
+google-generativeai>=0.7.0

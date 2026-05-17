@@ -110,3 +110,163 @@ export async function reSeparate(jobId) {
   if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
   return r.json();
 }
+
+// ── Stage 2: Diarization ──────────────────────────────────────────────────────
+
+export async function runDiarization(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/run-diarization`;
+  const r = await fetch(url, { method: 'POST' });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function getDiarization(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/diarization`;
+  const r = await fetch(url);
+  log('GET', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function confirmDiarization(jobId, speakers, segments) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/confirm-diarization`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ speakers, segments }),
+  });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+// ── Stage 3: Transcription ────────────────────────────────────────────────────
+
+export async function runTranscription(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/run-transcription`;
+  const r = await fetch(url, { method: 'POST' });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function getTranscription(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/transcription`;
+  const r = await fetch(url);
+  log('GET', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function confirmTranscription(jobId, segments, speakers = []) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/confirm-transcription`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ segments, speakers }),
+  });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+// ── Stage 4: Translation ──────────────────────────────────────────────────────
+
+export async function runTranslation(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/run-translation`;
+  const r = await fetch(url, { method: 'POST' });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function getTranslation(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/translation`;
+  const r = await fetch(url);
+  log('GET', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function confirmTranslation(jobId, segments, speakers = []) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/confirm-translation`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ segments, speakers }),
+  });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+// ── Stage 5: TTS ──────────────────────────────────────────────────────────────
+
+export async function runTTS(jobId, speakerVoiceMap = {}) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/run-tts`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ speaker_voice_map: speakerVoiceMap }),
+  });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function getTTS(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/tts`;
+  const r = await fetch(url);
+  log('GET', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export function ttsAudioUrl(jobId, segmentId) {
+  return `/jobs/${jobId}/tts/audio/${segmentId}`;
+}
+
+export async function confirmTTS(jobId, segments, speakers = []) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/confirm-tts`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ segments, speakers }),
+  });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+// ── Stage 6: Lipsync ──────────────────────────────────────────────────────────
+
+export async function runLipsync(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/run-lipsync`;
+  const r = await fetch(url, { method: 'POST' });
+  log('POST', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}
+
+export async function getLipsync(jobId) {
+  const t0 = Date.now();
+  const url = `/jobs/${jobId}/lipsync`;
+  const r = await fetch(url);
+  log('GET', url, r.status, Date.now() - t0);
+  if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
+  return r.json();
+}

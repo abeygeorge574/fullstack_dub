@@ -1,0 +1,1759 @@
+/* ProDub — Stage 2 (Diarization) styles
+   Loaded ALONGSIDE editor.css (which provides shared chrome).
+   Stage-2-only selectors live here. Scoped under .app-diar where ambiguity might arise. */
+
+:root {
+  --speaker-lane-h: 64px;
+  --ref-lane-h: 58px;            /* compact reference lanes (Vocals + Instrumental) */
+}
+
+/* Stage 2 widens the rail to give the speaker name + meta tags + controls
+   room to breathe — 3 chips + 3 controls don't fit comfortably in 232px. */
+.app-diar { --track-rail-w: 296px; }
+
+/* ─────────────────────────────────────────────────────────────────
+   Video preview — docked above the timeline on Stages 2–5.
+   Drag the bottom edge to resize; double-click the edge to reset.
+   ─────────────────────────────────────────────────────────────── */
+.app-diar .video-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--white-10);
+  background: #000;
+  overflow: hidden;
+  /* height is set inline via React state, persisted to localStorage */
+}
+.app-diar .video-preview.empty {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+}
+.app-diar .video-preview.drag-over {
+  outline: 2px dashed var(--ins-accent);
+  outline-offset: -8px;
+}
+.app-diar .video-preview .vp-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+.app-diar .video-preview .vp-pick {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 12px 18px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--white-20);
+  color: var(--fg);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+  transition: background 120ms, border-color 120ms;
+}
+.app-diar .video-preview .vp-pick:hover {
+  background: var(--white-5);
+  border-color: var(--ins-accent);
+}
+.app-diar .video-preview .vp-pick .ms { color: var(--ins-accent); }
+.app-diar .video-preview .vp-clear {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--white-10);
+  color: var(--white-80);
+  border-radius: 6px;
+  cursor: default;
+  z-index: 3;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.app-diar .video-preview .vp-clear:hover {
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--fg);
+  border-color: var(--white-30);
+}
+.app-diar .video-preview .vp-tc {
+  position: absolute;
+  top: 10px; left: 10px;
+  z-index: 3;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--white-10);
+  border-radius: 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.app-diar .video-preview .vp-tc-now { color: var(--ins-accent); font-weight: 500; }
+.app-diar .video-preview .vp-tc-sep { color: var(--white-30); }
+.app-diar .video-preview .vp-tc-tot { color: var(--white-50); }
+
+/* Bottom-edge drag handle — sits inside the preview, anchored to the bottom.
+   The grip pill is centered horizontally for affordance. */
+.app-diar .video-preview .vp-resize {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 4;
+}
+.app-diar .video-preview .vp-resize::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: var(--white-10);
+}
+.app-diar .video-preview .vp-resize-grip {
+  width: 40px; height: 4px;
+  border-radius: 999px;
+  background: var(--white-20);
+  transition: background 120ms, transform 120ms;
+}
+.app-diar .video-preview .vp-resize:hover .vp-resize-grip,
+.app-diar .video-preview .vp-resize:active .vp-resize-grip {
+  background: var(--ins-accent);
+  transform: scaleX(1.2);
+}
+
+.app-diar .lane-ref {
+  height: var(--ref-lane-h);
+  border-bottom: 1px solid var(--white-5);
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(255,255,255,0.012);
+}
+
+/* Keep the left-column rail rows the SAME height as the right-column lane rows.
+   .rail-col is display:flex/column (from editor.css) — without flex-shrink:0
+   the rail children compress to fit the available height, while .lane-col's
+   children keep their natural heights → 27px-ish drift between sides.
+   Both columns get the same overflow behavior so they clip identically AND
+   can scroll vertically when speakers exceed the available room. */
+.app-diar .rail-col {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--white-10) transparent;
+}
+.app-diar .rail-col::-webkit-scrollbar { width: 8px; }
+.app-diar .rail-col::-webkit-scrollbar-thumb { background: var(--white-10); border-radius: 4px; }
+.app-diar .rail-col > * {
+  flex-shrink: 0;
+}
+.app-diar .lane-col {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--white-10) transparent;
+}
+.app-diar .lane-col::-webkit-scrollbar { width: 8px; }
+.app-diar .lane-col::-webkit-scrollbar-thumb { background: var(--white-10); border-radius: 4px; }
+
+/* Sticky headers so the ruler + rail-head stay visible while scrolling lanes */
+.app-diar .rail-col .rail-head,
+.app-diar .rail-col .rail-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: rgba(2,6,23,0.94);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.app-diar .rail-col .rail-section-head { top: 36px; }
+.app-diar .lane-col > .ruler-wrap,
+.app-diar .lane-col .lanes-divider {
+  position: sticky;
+  z-index: 4;
+  background: rgba(2,6,23,0.94);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.app-diar .lane-col > .ruler-wrap { top: 0; }
+
+/* Pin the horizontal scrollbar to the visible bottom of the lane area
+   (sticky so it stays in view while user scrolls vertically). */
+.app-diar .lane-col .scroll-track {
+  position: sticky;
+  bottom: 6px;
+  margin-top: -16px;  /* sit just above the last lane's bottom edge */
+}
+.app-diar .lane-ref.voc { background-color: rgba(96,165,250,0.022); }
+.app-diar .lane-ref.ins { background-color: rgba(94,234,212,0.020); }
+
+/* The visual divider between reference lanes block and speaker lanes block */
+.app-diar .lanes-divider {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--white-30);
+  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
+  border-bottom: 1px solid var(--white-10);
+  border-top: 1px solid var(--white-10);
+  position: relative;
+  z-index: 1;
+}
+.app-diar .lanes-divider .pulse {
+  width: 6px; height: 6px;
+  border-radius: 999px;
+  background: var(--ins-accent);
+  box-shadow: 0 0 8px rgba(94,234,212,0.6);
+  margin-right: 8px;
+}
+.app-diar .lanes-divider .count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--white-50);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-size: 11px;
+}
+
+/* ── Rail head: reference vs speakers section ── */
+.app-diar .rail-section-head {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--white-10);
+  border-top: 1px solid var(--white-10);
+  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0));
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--white-30);
+  position: relative;
+  z-index: 1;
+}
+.app-diar .rail-section-head .add-speaker {
+  margin-left: auto;
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  border: 1px dashed var(--white-20);
+  color: var(--white-50);
+  background: transparent;
+  cursor: default;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.app-diar .rail-section-head .add-speaker:hover {
+  background: var(--white-5); color: var(--fg); border-color: var(--white-30);
+  border-style: solid;
+}
+
+/* ── Reference rail (compact Vocals/Instrumental rail, read-only) ── */
+.app-diar .rail-ref {
+  height: var(--ref-lane-h);
+  border-bottom: 1px solid var(--white-5);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  position: relative;
+}
+.app-diar .rail-ref::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+}
+.app-diar .rail-ref.voc::before {
+  background: linear-gradient(180deg, transparent, var(--voc-accent), transparent);
+}
+.app-diar .rail-ref.ins::before {
+  background: linear-gradient(180deg, transparent, var(--ins-accent), transparent);
+}
+.app-diar .rail-ref .rail-avatar {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+.app-diar .rail-ref.voc .rail-avatar {
+  background: rgba(96,165,250,0.18);
+  color: #bfdbfe;
+  box-shadow: inset 0 0 0 1px rgba(96,165,250,0.30);
+}
+.app-diar .rail-ref.ins .rail-avatar {
+  background: rgba(94,234,212,0.20);
+  color: #99f6e4;
+  box-shadow: inset 0 0 0 1px rgba(94,234,212,0.30);
+}
+.app-diar .rail-ref .rail-meta {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.app-diar .rail-ref .rail-label {
+  font-size: 12px; font-weight: 500; color: var(--white-80);
+}
+.app-diar .rail-ref .rail-sublabel {
+  font-size: 10px; color: var(--white-30);
+  letter-spacing: 0.04em;
+}
+.app-diar .rail-ref .rail-lock {
+  color: var(--white-30);
+  font-size: 11px;
+}
+
+/* ── Speaker rail (per-speaker controls) ── */
+.app-diar .rail-spk {
+  height: var(--speaker-lane-h);
+  border-bottom: 1px solid var(--white-10);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  position: relative;
+}
+.app-diar .rail-spk::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: linear-gradient(180deg, transparent, var(--spk-color, var(--white-30)), transparent);
+}
+.app-diar .rail-spk .rail-avatar {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600;
+  background: var(--spk-bg, rgba(255,255,255,0.06));
+  color: var(--spk-color, var(--fg));
+  box-shadow: inset 0 0 0 1px var(--spk-border, rgba(255,255,255,0.10));
+  flex-shrink: 0;
+}
+.app-diar .rail-spk .rail-avatar img {
+  width: 100%; height: 100%; border-radius: 8px; object-fit: cover;
+}
+.app-diar .rail-spk .rail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.app-diar .rail-spk .rail-name {
+  font-size: 13px; font-weight: 500; color: var(--fg);
+  background: transparent; border: 1px solid transparent;
+  padding: 1px 4px; border-radius: 4px;
+  outline: none;
+  min-width: 0; max-width: 100%;
+  cursor: text;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-diar .rail-spk .rail-namerow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.app-diar .rail-spk .rail-name:hover { background: var(--white-5); }
+.app-diar .rail-spk .rail-name:focus {
+  background: var(--white-5);
+  border-color: var(--white-20);
+  cursor: text;
+}
+.app-diar .rail-spk .rail-tags {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: nowrap;
+  /* Allow tags to overflow into a faint right-side fade rather than clipping
+     mid-character. With the wider --track-rail-w + smaller tag padding below
+     this should never actually trigger, but it's a safety net. */
+}
+.app-diar .rail-spk .spk-tag {
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  color: var(--white-60);
+  border: 1px solid var(--white-10);
+  text-transform: lowercase;
+  cursor: default;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+/* Controls column — keep compact so the meta column gets the slack. */
+.app-diar .rail-spk .rail-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.app-diar .lane-spk {
+  position: relative;
+  height: var(--speaker-lane-h);
+  border-bottom: 1px solid var(--white-10);
+  background-color: var(--spk-bg, transparent);
+  overflow: hidden;
+  user-select: none;
+  cursor: cell;
+}
+.app-diar .lane-spk:hover { background-color: var(--spk-bg-hover, rgba(255,255,255,0.012)); }
+
+/* Marquee selection (pending-segment drag-to-create) */
+.app-diar .marquee-create {
+  position: absolute;
+  top: 6px; bottom: 6px;
+  border-radius: 6px;
+  border: 1.5px dashed var(--spk-color, var(--white-30));
+  background: var(--spk-bg, rgba(255,255,255,0.05));
+  pointer-events: none;
+  z-index: 4;
+}
+.app-diar .marquee-create::after {
+  content: "Add segment";
+  position: absolute;
+  top: 50%; left: 8px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--spk-color);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* ── Segment block ── */
+.app-diar .seg {
+  position: absolute;
+  top: 6px; bottom: 6px;
+  border-radius: 6px;
+  background: var(--spk-color, #fff);
+  color: #0a0a0a;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px 4px 8px;
+  overflow: hidden;
+  cursor: grab;
+  font-size: 11px;
+  line-height: 1.25;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.25), inset 0 0 0 0 transparent;
+  transition: transform 100ms, box-shadow 100ms, opacity 100ms;
+  z-index: 3;
+}
+.app-diar .seg:active { cursor: grabbing; }
+.app-diar .seg:hover {
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.20),
+    0 4px 12px rgba(0,0,0,0.4);
+  z-index: 5;
+}
+.app-diar .seg.selected {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 6px 16px rgba(0,0,0,0.5);
+  z-index: 6;
+}
+.app-diar .seg.flagged {
+  box-shadow: inset 0 0 0 1.5px #fb923c, 0 1px 0 rgba(0,0,0,0.25);
+}
+.app-diar .seg.flagged.selected {
+  box-shadow: inset 0 0 0 1.5px #fb923c, 0 0 0 2px #fff, 0 6px 16px rgba(0,0,0,0.5);
+}
+
+/* Status overlays */
+.app-diar .seg.draft {
+  background: var(--spk-bg, rgba(255,255,255,0.10));
+  color: var(--spk-color);
+  box-shadow:
+    inset 0 0 0 1.5px var(--spk-color),
+    0 1px 0 rgba(0,0,0,0.25);
+}
+.app-diar .seg.draft.selected {
+  box-shadow:
+    inset 0 0 0 1.5px var(--spk-color),
+    0 0 0 2px #fff,
+    0 6px 16px rgba(0,0,0,0.5);
+}
+.app-diar .seg.draft.flagged {
+  box-shadow:
+    inset 0 0 0 1.5px #fb923c,
+    0 1px 0 rgba(0,0,0,0.25);
+}
+.app-diar .seg.generating {
+  background: var(--spk-bg);
+  color: var(--spk-color);
+  box-shadow:
+    inset 0 0 0 1.5px var(--spk-color),
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 0 16px rgba(255,255,255,0.04);
+  position: absolute; /* keep abs positioning intact */
+}
+.app-diar .seg.generating::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--spk-bg) 40%,
+    rgba(255,255,255,0.10) 50%,
+    var(--spk-bg) 60%,
+    transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  pointer-events: none;
+}
+@keyframes shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.app-diar .seg.generated { /* solid colored, default */ }
+.app-diar .seg.translated {
+  /* a touch deeper to suggest "fully processed" */
+  filter: saturate(1.05);
+}
+
+/* Edge resize handles */
+.app-diar .seg .edge {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  background: transparent;
+  z-index: 7;
+}
+.app-diar .seg .edge.l { left: 0; }
+.app-diar .seg .edge.r { right: 0; }
+.app-diar .seg:hover .edge::after,
+.app-diar .seg.selected .edge::after {
+  content: "";
+  position: absolute;
+  top: 35%; bottom: 35%; left: 50%;
+  width: 2px; background: #0a0a0a;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  opacity: 0.4;
+}
+.app-diar .seg.draft .edge::after { background: var(--spk-color); }
+.app-diar .seg.generating .edge::after { background: var(--spk-color); }
+
+/* Inside content */
+.app-diar .seg .seg-meta {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  margin-bottom: 1px;
+}
+.app-diar .seg .seg-status {
+  display: inline-flex; align-items: center; gap: 3px;
+  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.18);
+}
+.app-diar .seg.draft .seg-status,
+.app-diar .seg.generating .seg-status {
+  background: var(--spk-bg);
+  color: var(--spk-color);
+}
+.app-diar .seg .seg-flag-dot {
+  width: 5px; height: 5px;
+  border-radius: 999px;
+  background: #fb923c;
+  margin-left: auto;
+  box-shadow: 0 0 4px rgba(251,146,60,0.8);
+  flex-shrink: 0;
+}
+.app-diar .seg .seg-text {
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+.app-diar .seg .seg-text-translated {
+  font-size: 10px;
+  line-height: 1.25;
+  font-weight: 400;
+  opacity: 0.75;
+  margin-top: 1px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  font-style: italic;
+}
+
+/* Compact segments (too narrow to fit any text) just show the colored block */
+.app-diar .seg.tiny .seg-meta { display: none; }
+.app-diar .seg.tiny .seg-text,
+.app-diar .seg.tiny .seg-text-translated { display: none; }
+
+/* When the speaker lane is muted/soloed-out, segments dim */
+.app-diar .lane-spk.muted .seg { opacity: 0.35; }
+
+/* ── Segment FAB (selection action bar above selected segment) ── */
+.app-diar .seg-fab {
+  position: absolute;
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px;
+  background: rgba(2,6,23,0.94);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border: 1px solid var(--white-20);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+  font-size: 11px; color: var(--fg);
+  white-space: nowrap;
+}
+.app-diar .seg-fab .seg-fab-info {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 8px 0 6px;
+  height: 26px;
+  border-right: 1px solid var(--white-10);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--white-60);
+}
+.app-diar .seg-fab .seg-fab-info .spk-dot {
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: var(--spk-color, #fff);
+}
+.app-diar .seg-fab .seg-fab-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 26px; padding: 0 8px;
+  border: 0; background: transparent;
+  color: var(--white-80);
+  border-radius: 999px;
+  font-size: 11px;
+  cursor: default;
+  font-family: inherit;
+}
+.app-diar .seg-fab .seg-fab-btn:hover { background: var(--white-5); color: var(--fg); }
+.app-diar .seg-fab .seg-fab-btn .ms { color: var(--white-60); }
+.app-diar .seg-fab .seg-fab-btn:hover .ms { color: var(--fg); }
+.app-diar .seg-fab .seg-fab-btn.danger { color: #fca5a5; }
+.app-diar .seg-fab .seg-fab-btn.danger:hover { background: rgba(248,113,113,0.10); }
+.app-diar .seg-fab .seg-fab-btn.danger .ms { color: #fca5a5; }
+.app-diar .seg-fab .seg-fab-btn.is-flagged { color: #fed7aa; }
+.app-diar .seg-fab .seg-fab-btn.is-flagged .ms { color: #fed7aa; }
+.app-diar .seg-fab .seg-fab-x {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0;
+  color: var(--white-50);
+  border-radius: 999px;
+  cursor: default;
+}
+.app-diar .seg-fab .seg-fab-x:hover { color: var(--fg); background: var(--white-5); }
+.app-diar .seg-fab .reassign-wrap { position: relative; }
+.app-diar .seg-fab .reassign-menu {
+  position: absolute;
+  top: 100%; left: 0;
+  margin-top: 6px;
+  width: 200px;
+  padding: 4px;
+  background: rgba(10, 20, 48, 0.96);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  border: 1px solid var(--white-20);
+  border-radius: 10px;
+  z-index: 40;
+  box-shadow: var(--shadow-lg);
+}
+/* Portaled variants — rendered to document.body so overflow:hidden in the
+   timeline columns can't clip them. Self-contained because the .app-diar
+   .seg-fab ancestor chain doesn't apply outside the React tree. */
+.reassign-menu.portal {
+  width: 220px;
+  padding: 4px;
+  background: rgba(10, 20, 48, 0.96);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  border: 1px solid var(--white-20);
+  border-radius: 10px;
+  z-index: 9999;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+  animation: liftIn 140ms cubic-bezier(0.2,0.8,0.2,1);
+}
+.reassign-menu.portal .ra-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 0; background: transparent;
+  color: var(--white-80);
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+.reassign-menu.portal .ra-item:hover { background: var(--white-5); color: var(--fg); }
+.reassign-menu.portal .ra-item.cur { color: var(--white-30); cursor: not-allowed; }
+.reassign-menu.portal .ra-dot {
+  width: 10px; height: 10px; border-radius: 3px;
+}
+
+.rail-menu.portal {
+  width: 220px;
+  background: rgba(10, 20, 48, 0.96);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  border: 1px solid var(--white-20);
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 9999;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+  animation: liftIn 140ms cubic-bezier(0.2,0.8,0.2,1);
+}
+.app-diar .seg-fab .reassign-menu .ra-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 0; background: transparent;
+  color: var(--white-80);
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+.app-diar .seg-fab .reassign-menu .ra-item:hover { background: var(--white-5); color: var(--fg); }
+.app-diar .seg-fab .reassign-menu .ra-item.cur { color: var(--white-30); cursor: not-allowed; }
+.app-diar .seg-fab .reassign-menu .ra-dot {
+  width: 10px; height: 10px; border-radius: 3px;
+}
+
+/* ── Batch action bar (multi-select + send for generation) ── */
+.app-diar .batch-bar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 6px 6px 14px;
+  background: rgba(2,6,23,0.95);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border: 1px solid var(--white-20);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  z-index: 8;
+  font-size: 12px;
+  white-space: nowrap;
+  animation: liftIn 180ms cubic-bezier(0.2,0.8,0.2,1);
+}
+.app-diar .batch-bar .bb-count {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+.app-diar .batch-bar .bb-count .num { color: var(--fg); font-size: 14px; font-weight: 600; }
+.app-diar .batch-bar .bb-count .lbl { color: var(--white-50); font-size: 11px; }
+.app-diar .batch-bar .bb-divider {
+  width: 1px; height: 18px; background: var(--white-10);
+}
+.app-diar .batch-bar .bb-mix {
+  font-size: 11px;
+  color: var(--white-50);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.app-diar .batch-bar .bb-mix .pip {
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.app-diar .batch-bar .bb-mix .pip-dot {
+  width: 6px; height: 6px; border-radius: 999px;
+}
+.app-diar .batch-bar .pip-dot.draft { background: var(--white-30); }
+.app-diar .batch-bar .pip-dot.gen   { background: var(--ins-accent); }
+.app-diar .batch-bar .pip-dot.tx    { background: #c4b5fd; }
+.app-diar .batch-bar .bb-secondary {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 12px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--white-20);
+  color: var(--white-80);
+  font-size: 12px;
+  cursor: default;
+  font-family: inherit;
+}
+.app-diar .batch-bar .bb-secondary:hover { background: var(--white-5); color: var(--fg); }
+.app-diar .batch-bar .bb-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 14px;
+  border-radius: 999px;
+  background: var(--ins-accent);
+  color: #042525;
+  font-weight: 600;
+  border: 0;
+  cursor: default;
+  font-family: inherit;
+  font-size: 12px;
+  box-shadow: 0 0 0 1px rgba(94,234,212,0.40) inset, 0 6px 24px rgba(94,234,212,0.18);
+}
+.app-diar .batch-bar .bb-primary:hover { background: #6ff0d8; }
+.app-diar .batch-bar .bb-x {
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: transparent; border: 0;
+  color: var(--white-50);
+  cursor: default;
+}
+.app-diar .batch-bar .bb-x:hover { background: var(--white-5); color: var(--fg); }
+
+/* ── Generation progress strip (substage strip area) ── */
+.app-diar .gen-progress {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 12px 4px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--white-10);
+  font-size: 11px;
+  color: var(--white-60);
+  font-family: var(--font-mono);
+}
+.app-diar .gen-progress .gp-bar {
+  position: relative;
+  width: 60px; height: 4px;
+  border-radius: 999px;
+  background: var(--white-10);
+  overflow: hidden;
+}
+.app-diar .gen-progress .gp-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--ins-accent);
+  transition: width 240ms ease;
+}
+.app-diar .gen-progress .gp-fill.tx { background: #c4b5fd; }
+.app-diar .gen-progress .gp-label {
+  font-family: var(--font-sans);
+  letter-spacing: 0.02em;
+}
+
+/* ── Speakers tab (in history panel) ── */
+.app-diar .spk-tab-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--white-5);
+  cursor: default;
+  align-items: center;
+}
+.app-diar .spk-tab-item:hover { background: var(--white-5); }
+.app-diar .spk-tab-item .spk-tab-avatar {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600;
+  background: var(--spk-bg);
+  color: var(--spk-color);
+  box-shadow: inset 0 0 0 1px var(--spk-border);
+}
+.app-diar .spk-tab-item .spk-tab-avatar img {
+  width: 100%; height: 100%; border-radius: 8px; object-fit: cover;
+}
+.app-diar .spk-tab-item .spk-tab-meta { min-width: 0; }
+.app-diar .spk-tab-item .spk-tab-name {
+  font-size: 12.5px;
+  color: var(--fg);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.app-diar .spk-tab-item .spk-tab-tags {
+  display: flex; gap: 4px; margin-top: 3px;
+  align-items: center;
+}
+.app-diar .spk-tab-item .spk-tab-tag {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  color: var(--white-50);
+  border: 1px solid var(--white-10);
+}
+.app-diar .spk-tab-item .spk-tab-stats {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--white-50);
+  text-align: right;
+  line-height: 1.3;
+}
+.app-diar .spk-tab-item .spk-tab-stats .turns { color: var(--white-80); font-weight: 500; }
+
+/* ── Tab header gets a third tab (Speakers) on Stage 2 ── */
+.app-diar .history-head .tab .ms { color: inherit; }
+.app-diar .history-head .tab.active .tab-count { color: var(--fg); }
+
+/* ── History panel tabs: progressive disclosure so 3–4 tabs + the
+   collapse chevron fit inside the 320px rail without overlap.
+   Inactive tabs show icon + count; active tab reveals its label. ── */
+.app-diar .history-head { gap: 4px; padding: 0 6px; }
+.app-diar .history-head .tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  gap: 2px;
+}
+.app-diar .history-head .tab {
+  padding: 0 8px;
+  gap: 5px;
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+.app-diar .history-head .tab > span:not(.ms):not(.tab-count) {
+  display: none;
+}
+.app-diar .history-head .tab.active {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.app-diar .history-head .tab.active > span:not(.ms):not(.tab-count) {
+  display: inline;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.app-diar .history-head > .iconbtn { flex-shrink: 0; }
+
+/* ── Track-options popover for speakers (extends shared .rail-menu) ── */
+.app-diar .rail-menu-item .ra-dot {
+  width: 10px; height: 10px; border-radius: 3px;
+  margin-right: 2px;
+}
+
+/* ── Meta editor popover (gender / age) ── */
+.app-diar .meta-editor {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--white-10);
+  margin-top: 4px;
+}
+.app-diar .meta-editor-row {
+  display: flex; align-items: center; gap: 6px;
+}
+.app-diar .meta-editor-lbl {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--white-30);
+  width: 56px;
+  flex-shrink: 0;
+}
+.app-diar .meta-editor-opts {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  flex: 1;
+}
+.app-diar .meta-editor-opt {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--white-10);
+  color: var(--white-60);
+  font-size: 10.5px;
+  cursor: default;
+  font-family: inherit;
+}
+.app-diar .meta-editor-opt:hover { background: var(--white-5); color: var(--fg); }
+.app-diar .meta-editor-opt.active {
+  background: var(--white-10);
+  color: var(--fg);
+  border-color: var(--white-20);
+}
+
+/* ── View-mode segmented control (in tweaks panel; surfaced via header chip) ── */
+.app-diar .view-mode-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 8px 4px 10px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--white-10);
+  color: var(--white-60);
+  font-size: 11px;
+  cursor: default;
+}
+.app-diar .view-mode-chip .vm-label {
+  font-size: 10px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--white-30);
+}
+.app-diar .view-mode-chip .vm-current {
+  color: var(--fg);
+  font-weight: 500;
+  font-size: 11.5px;
+}
+.app-diar .view-mode-chip .ms {
+  color: var(--white-50);
+  font-size: 14px;
+}
+
+/* ── Compact substage info: layout adjustments specific to Stage 2 ── */
+.app-diar .substage-title .ix { color: var(--white-30); }
+.app-diar .substage-title h1 { color: var(--fg); }
+
+/* When the speaker lane has zero segments visible (empty) */
+.app-diar .lane-spk .lane-empty-hint {
+  position: absolute;
+  top: 50%; left: 16px;
+  transform: translateY(-50%);
+  font-size: 10.5px;
+  color: var(--white-20);
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  font-style: italic;
+}
+
+/* ── Edits panel — historical rows are read-only (only top row is undoable) ── */
+.app-diar .hist-item.is-historical .actions { opacity: 0.4; }
+.app-diar .hist-item.is-historical:hover .actions { opacity: 0.7; }
+.app-diar .hist-item.is-top .actions { opacity: 1; }
+.app-diar .hist-item .undo-spacer {
+  width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.app-diar .hist-item.is-top .undo {
+  border-color: rgba(94,234,212,0.30);
+  background: rgba(94,234,212,0.06);
+  color: var(--ins-accent);
+}
+.app-diar .hist-item.is-top .undo:hover {
+  background: rgba(94,234,212,0.14);
+}
+
+/* ── Voice picker overlay (Stage 5) ── */
+.app-diar .voice-picker {
+  width: 600px; max-width: 92vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0a1530 0%, #060b1c 100%);
+  border: 1px solid var(--white-10);
+  border-radius: 18px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+  animation: liftIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  overflow: hidden;
+}
+.app-diar .voice-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--white-10);
+}
+.app-diar .voice-picker .vp-dot {
+  width: 14px; height: 14px; border-radius: 4px;
+  background: var(--spk-color, var(--ins-accent));
+  flex-shrink: 0;
+}
+.app-diar .voice-picker .vp-title { flex: 1; min-width: 0; }
+.app-diar .voice-picker .vp-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--white-30);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.app-diar .voice-picker .vp-name {
+  font-size: 17px;
+  color: var(--fg);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.app-diar .voice-picker .vp-meta {
+  margin-left: 10px;
+  color: var(--white-50);
+  font-size: 12px;
+  font-weight: 400;
+}
+.app-diar .voice-picker-filter {
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px 6px;
+  border-bottom: 1px solid var(--white-10);
+}
+.app-diar .voice-picker .vp-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--white-60);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: default;
+  font-family: inherit;
+}
+.app-diar .voice-picker .vp-filter:hover { background: var(--white-5); color: var(--fg); }
+.app-diar .voice-picker .vp-filter.active {
+  background: var(--white-5);
+  color: var(--fg);
+  border-color: var(--white-10);
+}
+.app-diar .voice-picker .vp-filter-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--white-10);
+  color: var(--white-60);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.app-diar .voice-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 8px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--white-10) transparent;
+}
+.app-diar .voice-picker-list::-webkit-scrollbar { width: 8px; }
+.app-diar .voice-picker-list::-webkit-scrollbar-thumb { background: var(--white-10); border-radius: 4px; }
+.app-diar .voice-picker .vp-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--white-50);
+}
+.app-diar .voice-picker .vp-item {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--white-5);
+  background: rgba(255,255,255,0.015);
+  color: var(--fg);
+  text-align: left;
+  cursor: default;
+  margin-bottom: 4px;
+  font-family: inherit;
+  transition: background 120ms, border-color 120ms;
+}
+.app-diar .voice-picker .vp-item:hover {
+  background: var(--white-5);
+  border-color: var(--white-20);
+}
+.app-diar .voice-picker .vp-item.current {
+  background: var(--spk-bg, rgba(94,234,212,0.06));
+  border-color: var(--spk-color, var(--ins-accent));
+}
+.app-diar .voice-picker .vp-item-avatar {
+  position: relative;
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+  flex-shrink: 0;
+  border: 1px solid var(--white-10);
+}
+.app-diar .voice-picker .vp-item-premium {
+  position: absolute;
+  top: -4px; right: -4px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  background: linear-gradient(90deg, #facc15, #fb923c);
+  color: #0a0a0a;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.app-diar .voice-picker .vp-item-meta { min-width: 0; }
+.app-diar .voice-picker .vp-item-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 2px;
+}
+.app-diar .voice-picker .vp-item-cur {
+  font-size: 11px;
+  color: var(--spk-color, var(--ins-accent));
+  font-weight: 500;
+}
+.app-diar .voice-picker .vp-item-tone {
+  font-size: 12px;
+  color: var(--white-60);
+  margin-bottom: 3px;
+}
+.app-diar .voice-picker .vp-item-detail {
+  font-size: 10.5px;
+  color: var(--white-30);
+  letter-spacing: 0.02em;
+}
+.app-diar .voice-picker .vp-item-preview {
+  width: 32px; height: 32px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--white-10);
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+.app-diar .voice-picker .vp-item-preview:hover {
+  background: var(--white-10);
+  border-color: var(--white-20);
+}
+.app-diar .voice-picker-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--white-10);
+  background: rgba(0,0,0,0.25);
+}
+
+/* ── Imported audio segments — subtle diagonal stripe pattern ── */
+.app-diar .seg.imported {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255,255,255,0.06) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+/* ── Segment status variants (used by Stages 3+) ── */
+.app-diar .seg.pending {
+  background: rgba(255,255,255,0.06);
+  color: var(--spk-color);
+  box-shadow: inset 0 0 0 1.5px var(--spk-color, var(--white-30)), 0 1px 0 rgba(0,0,0,0.25);
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255,255,255,0.03) 0 4px,
+    transparent 4px 8px
+  );
+}
+.app-diar .seg.transcribing,
+.app-diar .seg.translating,
+.app-diar .seg.generating-audio {
+  background: var(--spk-bg);
+  color: var(--spk-color);
+  box-shadow: inset 0 0 0 1.5px var(--spk-color), 0 0 16px rgba(255,255,255,0.04);
+}
+.app-diar .seg.transcribing::before,
+.app-diar .seg.translating::before,
+.app-diar .seg.generating-audio::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--spk-bg) 40%,
+    rgba(255,255,255,0.10) 50%,
+    var(--spk-bg) 60%,
+    transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  pointer-events: none;
+}
+.app-diar .seg.transcribed,
+.app-diar .seg.translated,
+.app-diar .seg.audio-ready {
+  /* solid filled — default appearance */
+}
+
+/* ── Right panel: Transcript / Translation / Audio rows ── */
+.app-diar .script-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--white-5);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 120ms, border-color 120ms;
+}
+.app-diar .script-row:hover { background: var(--white-5); }
+.app-diar .script-row.selected {
+  background: var(--spk-bg, rgba(255,255,255,0.04));
+  border-left-color: var(--spk-color, var(--ins-accent));
+}
+.app-diar .script-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--white-50);
+}
+.app-diar .script-row-dot {
+  width: 8px; height: 8px; border-radius: 999px;
+  background: var(--spk-color, var(--white-30));
+  flex-shrink: 0;
+}
+.app-diar .script-row-name {
+  color: var(--fg);
+  font-weight: 500;
+  font-size: 11.5px;
+}
+.app-diar .script-row-tc {
+  margin-left: auto;
+  color: var(--white-50);
+  font-size: 10.5px;
+}
+.app-diar .script-row-dur {
+  color: var(--white-30);
+  font-size: 10.5px;
+}
+.app-diar .script-row-regen {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--white-50);
+  cursor: default;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.app-diar .script-row:hover .script-row-regen { opacity: 1; }
+.app-diar .script-row-regen:hover {
+  background: var(--white-5);
+  color: var(--fg);
+  border-color: var(--white-10);
+}
+.app-diar .script-row-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: rgba(255,255,255,0.02);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-top: 2px;
+  outline: none;
+  cursor: text;
+  word-break: break-word;
+}
+.app-diar .script-row-text:hover {
+  background: var(--white-5);
+}
+.app-diar .script-row-text:focus {
+  background: var(--white-5);
+  border-color: var(--spk-color, var(--white-20));
+  box-shadow: 0 0 0 3px rgba(94,234,212,0.10);
+}
+.app-diar .script-row-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #fb923c;
+  padding-left: 2px;
+  margin-top: 2px;
+}
+
+/* ── Translation row variant (dual-language) ── */
+.app-diar .script-row-text.source {
+  font-size: 12.5px;
+  color: var(--white-60);
+  background: transparent;
+  border-color: var(--white-5);
+  cursor: not-allowed;
+}
+.app-diar .script-row-text.target {
+  /* Same as default — that's the editable target language */
+}
+.app-diar .script-row-pair-label {
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--white-30);
+  margin-top: 4px;
+}
+
+/* ── Audio row variant (TTS preview) ── */
+.app-diar .script-row-audio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 6px;
+}
+.app-diar .script-row-audio button.play {
+  width: 28px; height: 28px;
+  border-radius: 999px;
+  background: var(--spk-color, var(--ins-accent));
+  color: #042525;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0;
+  cursor: default;
+  flex-shrink: 0;
+}
+.app-diar .script-row-audio button.play:hover { transform: scale(1.05); }
+.app-diar .script-row-audio .wave-mini {
+  flex: 1;
+  height: 24px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.app-diar .script-row-audio .wave-mini::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--spk-color, var(--ins-accent)) 0 1.5px,
+      transparent 1.5px 3.5px
+    );
+  opacity: 0.5;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
+}
+.app-diar .script-row-audio .wave-mini.empty::before { opacity: 0; }
+.app-diar .script-row-audio .wave-mini.empty::after {
+  content: "no audio yet";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--white-30);
+  font-style: italic;
+}
+
+/* ── Edit text overlay ── */
+.app-diar .edit-overlay {
+  width: 560px; max-width: 90vw;
+  background: linear-gradient(180deg, #0a1530 0%, #060b1c 100%);
+  border: 1px solid var(--white-10);
+  border-radius: 16px;
+  padding: 18px 20px 14px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+  animation: liftIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.app-diar .edit-overlay-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.app-diar .edit-overlay-dot {
+  width: 12px; height: 12px; border-radius: 4px;
+  background: var(--spk-color, var(--ins-accent));
+}
+.app-diar .edit-overlay-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+}
+.app-diar .edit-overlay-tc {
+  margin-left: 12px;
+  font-size: 11px;
+  color: var(--white-50);
+}
+.app-diar .edit-overlay-head .iconbtn {
+  margin-left: auto;
+}
+.app-diar .edit-overlay-help {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--white-30);
+  margin-bottom: 6px;
+}
+.app-diar .edit-overlay-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--white-10);
+  border-radius: 8px;
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.app-diar .edit-overlay-textarea:focus {
+  border-color: var(--spk-color, var(--ins-accent));
+  box-shadow: 0 0 0 3px rgba(94,234,212,0.10);
+}
+.app-diar .edit-overlay-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+.app-diar .edit-overlay-hint {
+  font-size: 10px;
+  color: var(--white-30);
+  letter-spacing: 0.04em;
+  margin-right: auto;
+}
+
+/* ── Speaker lane (timeline area for one speaker) ── */
+.app-diar .lane-spk-rules {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, transparent, transparent 49%, rgba(255,255,255,0.04) 50%, transparent 51%, transparent);
+}
+
+/* ── Busy / spinner states for Generate ↔ Regenerate ── */
+@keyframes pd-spin { to { transform: rotate(360deg); } }
+.app-diar .ms.spin { animation: pd-spin 900ms linear infinite; transform-origin: 50% 50%; display: inline-block; }
+.app-diar .seg-fab-btn.is-busy { color: var(--white-50); cursor: default; }
+.app-diar .seg-fab-btn.is-busy:hover { background: transparent; color: var(--white-50); }
+
+/* ── Track-level Generate / Regenerate chip on speaker rail ── */
+.app-diar .rail-controls .track-act {
+  width: auto; min-width: 26px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent;
+  border: 1px solid var(--white-10);
+  border-radius: 999px;
+  color: var(--white-60);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: default;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.app-diar .rail-controls .track-act .ms { color: var(--spk-color, var(--white-60)); font-size: 14px; }
+.app-diar .rail-controls .track-act:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--fg);
+  border-color: var(--spk-border, var(--white-20));
+}
+.app-diar .rail-controls .track-act.is-gen { color: var(--fg); border-color: var(--spk-border, var(--white-20)); }
+.app-diar .rail-controls .track-act.is-busy { color: var(--white-50); }
+.app-diar .rail-controls .track-act.is-busy:hover { background: transparent; }
+.app-diar .rail-controls .track-act .count { color: var(--white-30); font-variant-numeric: tabular-nums; }
+
+/* Reorder rail-controls so the track-action chip sits to the LEFT
+   of the icon stack (visually balances) */
+.app-diar .rail-controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.app-diar .rail-controls .track-act { order: -1; margin-right: 2px; }
+
+/* ── Voice cloning step in Save & Continue modal (Stage 2) ── */
+.app-diar .save-modal { width: 600px; max-width: 92vw; }
+.app-diar .clone-modal-head { margin-bottom: 14px; }
+.app-diar .clone-modal-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(94,234,212,0.06);
+  border: 1px solid rgba(94,234,212,0.20);
+  color: var(--ins-accent);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.app-diar .clone-modal-eyebrow .ms { font-size: 12px; }
+
+.app-diar .clone-list {
+  display: flex; flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  margin: 12px 0 18px;
+  padding-right: 4px;
+}
+.app-diar .clone-row {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--white-10);
+  background: rgba(255,255,255,0.02);
+  cursor: default;
+  transition: background 120ms, border-color 120ms;
+}
+.app-diar .clone-row:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: var(--white-20);
+}
+.app-diar .clone-row.checked {
+  background: linear-gradient(180deg,
+    color-mix(in oklab, var(--spk-color), transparent 92%),
+    color-mix(in oklab, var(--spk-color), transparent 97%));
+  border-color: var(--spk-border, var(--ins-accent));
+}
+.app-diar .clone-row.weak {
+  opacity: 0.85;
+}
+.app-diar .clone-row input[type="checkbox"] {
+  position: absolute; opacity: 0; pointer-events: none;
+}
+.app-diar .clone-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--white-30);
+  background: rgba(0,0,0,0.20);
+  color: transparent;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.app-diar .clone-row.checked .clone-check {
+  background: var(--spk-color);
+  border-color: var(--spk-color);
+  color: #0b0f17;
+}
+.app-diar .clone-avatar {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: var(--spk-bg, rgba(255,255,255,0.06));
+  border: 1px solid var(--spk-border, var(--white-10));
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--spk-color, var(--fg));
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+}
+.app-diar .clone-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.app-diar .clone-meta { min-width: 0; }
+.app-diar .clone-name {
+  font-size: 13px; font-weight: 500; color: var(--fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.app-diar .clone-sub {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px;
+  color: var(--white-50);
+  margin-top: 2px;
+}
+.app-diar .clone-dur { text-align: right; }
+.app-diar .clone-dur-v {
+  font-size: 13px;
+  color: var(--fg);
+}
+.app-diar .clone-row.weak .clone-dur-v { color: #fde047; }
+.app-diar .clone-dur-l {
+  font-size: 10px;
+  color: var(--white-30);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+.app-diar .clone-preview {
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--white-10);
+  color: var(--white-60);
+  cursor: default;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.app-diar .clone-preview:hover {
+  background: var(--white-5);
+  color: var(--fg);
+  border-color: var(--white-20);
+}
+.app-diar .clone-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--white-10);
+}
+.app-diar .clone-summary {
+  flex: 1;
+  color: var(--white-60);
+  font-size: 12px;
+}
+.app-diar .clone-summary .mono {
+  color: var(--fg);
+  font-weight: 500;
+  font-size: 14px;
+  margin-right: 2px;
+}
+
+/* ── Cloning status pill on Stage 5 speaker rails ── */
+.app-diar .spk-tag.clone-pill {
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  font-variant-numeric: tabular-nums;
+}
+.app-diar .spk-tag.clone-pill.clone-ready {
+  color: var(--ins-accent);
+  border-color: rgba(94,234,212,0.30);
+  background: rgba(94,234,212,0.06);
+}
+.app-diar .spk-tag.clone-pill.clone-training {
+  color: #fde047;
+  border-color: rgba(253,224,71,0.30);
+  background: rgba(253,224,71,0.06);
+}
+.app-diar .spk-tag.clone-pill.clone-queued {
+  color: var(--white-50);
+  border-color: var(--white-10);
+  background: rgba(255,255,255,0.02);
+}
+
+/* Make the assigned voice chip look like a clickable affordance */
+.app-diar .spk-tag.spk-voice-chip {
+  transition: background 120ms, border-color 120ms;
+}
+.app-diar .spk-tag.spk-voice-chip:hover {
+  background: rgba(255,255,255,0.04) !important;
+}
+
+/* ── Voice picker section headers ── */
+.app-diar .vp-section-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--white-50);
+  border-top: 1px solid var(--white-10);
+  margin-top: 4px;
+}
+.app-diar .vp-section-head:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 12px;
+}
+.app-diar .vp-section-head .ms { color: var(--ins-accent); font-size: 14px; }
+.app-diar .vp-section-head .vp-section-count {
+  margin-left: auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--white-30);
+  letter-spacing: 0;
+}
+.app-diar .vp-item.vp-item-cloned {
+  background: linear-gradient(180deg, rgba(94,234,212,0.04), rgba(94,234,212,0));
+  border-color: rgba(94,234,212,0.12);
+}
+.app-diar .vp-item.vp-item-cloned:hover {
+  background: linear-gradient(180deg, rgba(94,234,212,0.07), rgba(94,234,212,0.02));
+  border-color: rgba(94,234,212,0.22);
+}
+

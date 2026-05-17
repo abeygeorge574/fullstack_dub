@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import UploadScreen from './components/UploadScreen.jsx';
 import Editor from './components/Editor.jsx';
 import { uploadJob, getJob, getWaveform, reSeparate } from './api.js';
+
+const DiarizationEditor = lazy(() => import('./components/DiarizationEditor.jsx'));
+const LipsyncEditor = lazy(() => import('./components/LipsyncEditor.jsx'));
 
 async function loadJob(id, setters) {
   const { setJobId, setJobData, setVocWave, setInsWave, setHtdWave, setLoadError, setAppState } = setters;
@@ -189,6 +192,16 @@ export default function App() {
     setAppState('upload');
   };
 
+  const handleStageConfirm = async (speakers, segments) => {
+    // Called by DiarizationEditor after confirm — reload job data
+    try {
+      const data = await getJob(jobId);
+      setJobData(data);
+    } catch (err) {
+      setLoadError(err.message);
+    }
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
   if (appState === 'upload') {
     return <UploadScreen onUpload={handleUpload} uploading={uploading} uploadError={uploadError} onResume={handleResume} />;
@@ -198,6 +211,40 @@ export default function App() {
     return <LoadingScreen jobData={jobData} />;
   }
 
+  const stage = jobData?.current_stage ?? 1;
+
+  // Stage 6 — Lipsync
+  if (stage >= 6) {
+    return (
+      <Suspense fallback={null}>
+        <LipsyncEditor
+          jobId={jobId}
+          jobData={jobData}
+          onNewUpload={handleNewUpload}
+        />
+      </Suspense>
+    );
+  }
+
+  // Stages 2–5 — Timeline editor (diarization / transcription / translation / TTS)
+  const STAGE_MODE = { 2: 'diarization', 3: 'transcription', 4: 'translation', 5: 'tts' };
+  if (stage >= 2 && stage <= 5) {
+    return (
+      <Suspense fallback={null}>
+        <DiarizationEditor
+          jobId={jobId}
+          mode={STAGE_MODE[stage]}
+          jobData={jobData}
+          vocWave={vocWave}
+          insWave={insWave}
+          onConfirm={handleStageConfirm}
+          onNewUpload={handleNewUpload}
+        />
+      </Suspense>
+    );
+  }
+
+  // Stage 1 — Stem separation editor
   return (
     <Editor
       jobId={jobId}

@@ -60,14 +60,32 @@ class Job(Base):
     instrumental_label = Column(String, nullable=False, default="Instrumental")
 
     # ── Stage 1: editor state (saved incrementally after every change) ────────
-    #
-    # Both columns store full JSON arrays, replaced on each POST:
-    #   corrections_json: [{ "id": str, "from": "voc"|"ins",
-    #                         "to": "voc"|"ins", "start": float, "end": float }]
-    #   flags_json:       [{ "id": str, "trackId": "voc"|"ins",
-    #                         "start": float, "end": float }]
-    #
-    # No author / reason / timestamp fields — those belong to later stages.
     corrections_json = Column(Text, nullable=False, default="[]")
     flags_json       = Column(Text, nullable=False, default="[]")
     committed_at     = Column(DateTime, nullable=True)   # set by confirm-stems
+
+    # ── Stage 2: Diarization ─────────────────────────────────────────────────
+    # status: pending | running | ready | error
+    diarization_status = Column(String, nullable=False, default="pending")
+    diarization_error  = Column(Text, nullable=True)
+    # speakers_json: [{id, name, color, colorDim, colorBg, gender, age, photo}]
+    # segments_json: [{id, speakerId, start, end, text, tx, status, flagged}]
+    speakers_json  = Column(Text, nullable=False, default="[]")
+    segments_json  = Column(Text, nullable=False, default="[]")
+
+    # ── Stage 3: Transcription ───────────────────────────────────────────────
+    transcription_status = Column(String, nullable=False, default="pending")
+    transcription_error  = Column(Text, nullable=True)
+
+    # ── Stage 4: Translation ─────────────────────────────────────────────────
+    translation_status = Column(String, nullable=False, default="pending")
+    translation_error  = Column(Text, nullable=True)
+
+    # ── Stage 5: TTS ─────────────────────────────────────────────────────────
+    tts_status = Column(String, nullable=False, default="pending")
+    tts_error  = Column(Text, nullable=True)
+
+    # ── Stage 6: Lipsync ─────────────────────────────────────────────────────
+    lipsync_status     = Column(String, nullable=False, default="pending")
+    lipsync_error      = Column(Text, nullable=True)
+    lipsync_video_path = Column(String, nullable=True)
