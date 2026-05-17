@@ -4,17 +4,19 @@ import Editor from './components/Editor.jsx';
 import { uploadJob, getJob, getWaveform, reSeparate } from './api.js';
 
 async function loadJob(id, setters) {
-  const { setJobId, setJobData, setVocWave, setInsWave, setLoadError, setAppState } = setters;
+  const { setJobId, setJobData, setVocWave, setInsWave, setHtdWave, setLoadError, setAppState } = setters;
   const data = await getJob(id);
   setJobId(id);
   setJobData(data);
   if (data.status === 'ready') {
-    const [vRes, iRes] = await Promise.all([
+    const [vRes, iRes, hRes] = await Promise.all([
       getWaveform(id, 'vocals'),
       getWaveform(id, 'instrumental'),
+      getWaveform(id, 'htdemucs_vocals').catch(() => null),
     ]);
     setVocWave(vRes.samples);
     setInsWave(iRes.samples);
+    setHtdWave(hRes?.samples ?? null);
     setAppState('active');
   } else if (data.status === 'error') {
     setLoadError(data.error_message || 'Pipeline failed.');
@@ -90,15 +92,16 @@ export default function App() {
   const [jobData, setJobData]   = useState(null);
   const [vocWave, setVocWave]   = useState(null);
   const [insWave, setInsWave]   = useState(null);
+  const [htdWave, setHtdWave]   = useState(null);
   const [loadError, setLoadError]   = useState(null);
   const [uploading, setUploading]   = useState(false);
   const [uploadError, setUploadError] = useState(null);
 
-  const stateSetters = { setJobId, setJobData, setVocWave, setInsWave, setLoadError, setAppState };
+  const stateSetters = { setJobId, setJobData, setVocWave, setInsWave, setHtdWave, setLoadError, setAppState };
 
   const handleResume = (id) => {
     localStorage.setItem(STORAGE_KEY, id);
-    setVocWave(null); setInsWave(null); setLoadError(null);
+    setVocWave(null); setInsWave(null); setHtdWave(null); setLoadError(null);
     loadJob(id, stateSetters).catch((err) => {
       setLoadError(err.message);
       setAppState('error');
@@ -116,13 +119,15 @@ export default function App() {
         if (cancelled) return;
         setJobData(data);
         if (data.status === 'ready') {
-          const [vRes, iRes] = await Promise.all([
+          const [vRes, iRes, hRes] = await Promise.all([
             getWaveform(jobId, 'vocals'),
             getWaveform(jobId, 'instrumental'),
+            getWaveform(jobId, 'htdemucs_vocals').catch(() => null),
           ]);
           if (cancelled) return;
           setVocWave(vRes.samples);
           setInsWave(iRes.samples);
+          setHtdWave(hRes?.samples ?? null);
           setAppState('active');
         } else if (data.status === 'error') {
           setLoadError(data.error_message || 'Pipeline failed.');
@@ -150,6 +155,7 @@ export default function App() {
       setJobData(null);
       setVocWave(null);
       setInsWave(null);
+      setHtdWave(null);
       setAppState('loading');
     } catch (err) {
       setUploadError(err.message);
@@ -178,6 +184,7 @@ export default function App() {
     setJobData(null);
     setVocWave(null);
     setInsWave(null);
+    setHtdWave(null);
     setLoadError(null);
     setAppState('upload');
   };
@@ -197,6 +204,7 @@ export default function App() {
       jobData={jobData}
       vocWave={vocWave}
       insWave={insWave}
+      htdWave={htdWave}
       appState={appState}
       errorMessage={loadError}
       onRetry={handleRetry}

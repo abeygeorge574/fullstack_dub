@@ -37,8 +37,12 @@ Thumbs.db
 # Claude Code local config
 .claude/
 
-# Data folder (large files, not in repo)
-/data/
+# Job data folder (audio/video files from runs — not in repo)
+backend/data/
+
+# ML model weights (large binaries)
+backend/models/
+design_post_stem/
 
 # Jupyter checkpoints
 .ipynb_checkpoints/

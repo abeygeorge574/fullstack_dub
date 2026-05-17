@@ -51,6 +51,8 @@ class Job(Base):
     instrumental_path          = Column(String, nullable=True)
     vocals_waveform_path       = Column(String, nullable=True)   # precomputed .json
     instrumental_waveform_path = Column(String, nullable=True)
+    htdemucs_vocals_path          = Column(String, nullable=True)  # HTDemucs vocal stem (reference)
+    htdemucs_vocals_waveform_path = Column(String, nullable=True)
     stem_model                 = Column(String, nullable=True)
 
     # ── Stage 1: track labels (user-renameable) ───────────────────────────────

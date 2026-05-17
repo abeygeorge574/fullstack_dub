@@ -56,6 +56,7 @@ def _job_response(job: models.Job, storage: StorageBackend) -> dict[str, Any]:
         # URLs the browser can use directly
         "vocals_url": storage.get_url(job.id, "vocals.wav") if job.vocals_path else None,
         "instrumental_url": storage.get_url(job.id, "instrumental.wav") if job.instrumental_path else None,
+        "htdemucs_vocals_url": storage.get_url(job.id, "htdemucs_vocals.wav") if job.htdemucs_vocals_path else None,
     }
 
 
@@ -122,6 +123,7 @@ def run_pipeline(job_id: str) -> None:
         stem_meta = separate_stems(job_id, storage)
         job.vocals_path = storage.get_local_path(job_id, stem_meta["vocals_filename"])
         job.instrumental_path = storage.get_local_path(job_id, stem_meta["instrumental_filename"])
+        job.htdemucs_vocals_path = storage.get_local_path(job_id, stem_meta["htdemucs_vocals_filename"])
         job.stem_model = stem_meta["model"]
         job.progress = 85
         db.commit()
@@ -129,13 +131,17 @@ def run_pipeline(job_id: str) -> None:
         # ── Stage C: Compute waveforms ────────────────────────────
         logger.info("[pipeline] job %s: computing waveforms", job_id)
 
-        voc_wave = compute_waveform(storage.get_local_path(job_id, "vocals.wav"))
+        voc_wave = compute_waveform(storage.get_local_path(job_id, "vocals.wav"), num_samples=4000)
         storage.write_json(job_id, "vocals_waveform.json", {"samples": voc_wave})
         job.vocals_waveform_path = storage.get_local_path(job_id, "vocals_waveform.json")
 
-        ins_wave = compute_waveform(storage.get_local_path(job_id, "instrumental.wav"))
+        ins_wave = compute_waveform(storage.get_local_path(job_id, "instrumental.wav"), num_samples=4000)
         storage.write_json(job_id, "instrumental_waveform.json", {"samples": ins_wave})
         job.instrumental_waveform_path = storage.get_local_path(job_id, "instrumental_waveform.json")
+
+        htd_wave = compute_waveform(storage.get_local_path(job_id, "htdemucs_vocals.wav"), num_samples=4000)
+        storage.write_json(job_id, "htdemucs_vocals_waveform.json", {"samples": htd_wave})
+        job.htdemucs_vocals_waveform_path = storage.get_local_path(job_id, "htdemucs_vocals_waveform.json")
 
         job.status = "ready"
         job.progress = 100
@@ -287,8 +293,9 @@ async def stream_audio(
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ):
-    if stem not in ("vocals", "instrumental"):
-        raise HTTPException(status_code=400, detail="stem must be 'vocals' or 'instrumental'")
+    VALID_STEMS = ("vocals", "instrumental", "htdemucs_vocals")
+    if stem not in VALID_STEMS:
+        raise HTTPException(status_code=400, detail=f"stem must be one of {VALID_STEMS}")
 
     job = _job_or_404(job_id, db)
     if job.status != "ready":
@@ -343,35 +350,44 @@ def export_stem(
     storage: StorageBackend = Depends(get_storage),
 ):
     """Return a stem WAV with corrections baked in (used by browser export download)."""
-    if stem not in ("vocals", "instrumental"):
-        raise HTTPException(status_code=400, detail="stem must be 'vocals' or 'instrumental'")
+    if stem not in ("vocals", "instrumental", "htdemucs_vocals"):
+        raise HTTPException(status_code=400, detail="stem must be 'vocals', 'instrumental', or 'htdemucs_vocals'")
 
     job = _job_or_404(job_id, db)
     if job.status != "ready":
         raise HTTPException(status_code=404, detail=f"Stems not ready (status: {job.status})")
 
     corrections = json.loads(job.corrections_json or "[]")
+    raw_filename = f"{stem}.wav"
 
     if not corrections:
         # No corrections — serve raw file as a download
-        filename = f"{stem}.wav"
-        if not storage.exists(job_id, filename):
-            raise HTTPException(status_code=404, detail=f"{filename} not found for job {job_id}")
-        local_path = storage.get_local_path(job_id, filename)
+        if not storage.exists(job_id, raw_filename):
+            raise HTTPException(status_code=404, detail=f"{raw_filename} not found for job {job_id}")
         logger.info("[export_stem] job=%s stem=%s (raw, no corrections)", job_id, stem)
         return FileResponse(
-            local_path,
+            storage.get_local_path(job_id, raw_filename),
             media_type="audio/wav",
-            headers={"Content-Disposition": f'attachment; filename="{stem}.wav"'},
+            headers={"Content-Disposition": f'attachment; filename="{raw_filename}"'},
         )
 
     # Apply corrections and stream the corrected WAV
     from pipeline.apply_corrections import apply_corrections as _apply
     voc_path = storage.get_local_path(job_id, "vocals.wav")
     ins_path = storage.get_local_path(job_id, "instrumental.wav")
+    htd_path = storage.get_local_path(job_id, "htdemucs_vocals.wav") if job.htdemucs_vocals_path else None
     logger.info("[export_stem] job=%s stem=%s applying %d corrections", job_id, stem, len(corrections))
-    voc_bytes, ins_bytes = _apply(voc_path, ins_path, corrections)
-    data = voc_bytes if stem == "vocals" else ins_bytes
+    voc_bytes, ins_bytes, htd_bytes = _apply(voc_path, ins_path, corrections, htd_path)
+
+    if stem == "vocals":
+        data = voc_bytes
+    elif stem == "instrumental":
+        data = ins_bytes
+    else:
+        if htd_bytes is None:
+            raise HTTPException(status_code=404, detail="HTDemucs vocals not available for this job")
+        data = htd_bytes
+
     return StreamingResponse(
         io.BytesIO(data),
         media_type="audio/wav",
@@ -390,8 +406,9 @@ def get_waveform(
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ) -> dict[str, Any]:
-    if stem not in ("vocals", "instrumental"):
-        raise HTTPException(status_code=400, detail="stem must be 'vocals' or 'instrumental'")
+    VALID_STEMS = ("vocals", "instrumental", "htdemucs_vocals")
+    if stem not in VALID_STEMS:
+        raise HTTPException(status_code=400, detail=f"stem must be one of {VALID_STEMS}")
 
     job = _job_or_404(job_id, db)
     if job.status != "ready":
@@ -424,6 +441,10 @@ class _FlagsBody(BaseModel):
 
 class _RenameBody(BaseModel):
     label: str
+
+
+class _ConfirmStemsBody(BaseModel):
+    vocal_winner: str = "voc"  # "voc" = ElevenLabs vocals, "htd" = HTDemucs vocals
 
 
 @router.post("/jobs/{job_id}/corrections")
@@ -500,8 +521,10 @@ async def re_separate(
     job.sample_rate = None
     job.vocals_path = None
     job.instrumental_path = None
+    job.htdemucs_vocals_path = None
     job.vocals_waveform_path = None
     job.instrumental_waveform_path = None
+    job.htdemucs_vocals_waveform_path = None
     job.stem_model = None
     db.commit()
 
@@ -513,6 +536,7 @@ async def re_separate(
 @router.post("/jobs/{job_id}/confirm-stems")
 def confirm_stems(
     job_id: str,
+    body: _ConfirmStemsBody = _ConfirmStemsBody(),
     db: Session = Depends(get_db),
     storage: StorageBackend = Depends(get_storage),
 ) -> dict[str, Any]:
@@ -523,18 +547,25 @@ def confirm_stems(
             detail=f"Cannot confirm stems — job status is '{job.status}', expected 'ready'",
         )
 
+    from pipeline.apply_corrections import apply_corrections as _apply
     corrections = json.loads(job.corrections_json or "[]")
-    if corrections:
-        from pipeline.apply_corrections import apply_corrections as _apply
-        voc_path = storage.get_local_path(job_id, "vocals.wav")
-        ins_path = storage.get_local_path(job_id, "instrumental.wav")
-        logger.info("[confirm_stems] job=%s baking %d corrections into final stems", job_id, len(corrections))
-        voc_bytes, ins_bytes = _apply(voc_path, ins_path, corrections)
-        storage.write_bytes(job_id, "vocals_corrected.wav", voc_bytes)
-        storage.write_bytes(job_id, "instrumental_corrected.wav", ins_bytes)
-        job.vocals_path = storage.get_local_path(job_id, "vocals_corrected.wav")
-        job.instrumental_path = storage.get_local_path(job_id, "instrumental_corrected.wav")
-        logger.info("[confirm_stems] job=%s corrected stems saved", job_id)
+    voc_path = storage.get_local_path(job_id, "vocals.wav")
+    ins_path = storage.get_local_path(job_id, "instrumental.wav")
+    htd_path = storage.get_local_path(job_id, "htdemucs_vocals.wav") if job.htdemucs_vocals_path else None
+
+    logger.info(
+        "[confirm_stems] job=%s baking %d corrections, vocal_winner=%s",
+        job_id, len(corrections), body.vocal_winner,
+    )
+    voc_bytes, ins_bytes, htd_bytes = _apply(voc_path, ins_path, corrections, htd_path)
+
+    # Choose winner vocal track
+    winner_bytes = (htd_bytes if htd_bytes is not None else voc_bytes) if body.vocal_winner == "htd" else voc_bytes
+
+    storage.write_bytes(job_id, "vocals_final.wav", winner_bytes)
+    storage.write_bytes(job_id, "instrumental_final.wav", ins_bytes)
+    job.vocals_path = storage.get_local_path(job_id, "vocals_final.wav")
+    job.instrumental_path = storage.get_local_path(job_id, "instrumental_final.wav")
 
     job.committed_at = datetime.utcnow()
     job.current_stage = 2

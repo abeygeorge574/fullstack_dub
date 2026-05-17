@@ -24,7 +24,7 @@ export async function getJob(jobId) {
   return r.json();
 }
 
-export async function getWaveform(jobId, stem, samples = 1600) {
+export async function getWaveform(jobId, stem, samples = 4000) {
   const t0 = Date.now();
   const url = `/jobs/${jobId}/stems/waveform/${stem}?samples=${samples}`;
   const r = await fetch(url);
@@ -72,10 +72,14 @@ export async function renameTrack(jobId, stem, label) {
   return r.json();
 }
 
-export async function confirmStems(jobId) {
+export async function confirmStems(jobId, vocalWinner = 'voc') {
   const t0 = Date.now();
   const url = `/jobs/${jobId}/confirm-stems`;
-  const r = await fetch(url, { method: 'POST' });
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vocal_winner: vocalWinner }),
+  });
   log('POST', url, r.status, Date.now() - t0);
   if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
   return r.json();

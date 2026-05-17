@@ -13,6 +13,25 @@ const STAGES = [
   { id: 6, label: 'Lipsync' },
 ];
 
+const TRACK_LABEL = { voc: 'EL Vocals', htd: 'HTDemucs', ins: 'Instrumental' };
+const TRACK_ICON  = { voc: 'mic', htd: 'merge', ins: 'music_note' };
+
+// Destination options for each source track
+const MOVE_OPTS = {
+  voc: [
+    { id: 'htd', label: 'HTDemucs', key: 'H', icon: 'merge',      color: 'rgba(167,139,250,0.20)', border: 'rgba(167,139,250,0.5)', text: '#a78bfa' },
+    { id: 'ins', label: 'Instrumental', key: 'I', icon: 'south',   color: 'rgba(94,234,212,0.14)',  border: 'rgba(94,234,212,0.4)',  text: '#5eead4' },
+  ],
+  htd: [
+    { id: 'voc', label: 'EL Vocals',   key: 'V', icon: 'north',   color: 'rgba(96,165,250,0.14)',  border: 'rgba(96,165,250,0.4)',  text: '#7dbcff' },
+    { id: 'ins', label: 'Instrumental', key: 'I', icon: 'south',   color: 'rgba(94,234,212,0.14)',  border: 'rgba(94,234,212,0.4)',  text: '#5eead4' },
+  ],
+  ins: [
+    { id: 'voc', label: 'EL Vocals',   key: 'V', icon: 'north',   color: 'rgba(96,165,250,0.14)',  border: 'rgba(96,165,250,0.4)',  text: '#7dbcff' },
+    { id: 'htd', label: 'HTDemucs',    key: 'H', icon: 'merge',   color: 'rgba(167,139,250,0.20)', border: 'rgba(167,139,250,0.5)', text: '#a78bfa' },
+  ],
+};
+
 // ── TopHeader ──────────────────────────────────────────────────
 function TopHeader({ confirmed, onConfirm, filename }) {
   return (
@@ -72,37 +91,40 @@ function SubstageStrip({ stats, confirmed, onConfirmToggle, onFocusCorrections, 
       <div className="substage-title">
         <span className="ix">STAGE 1 / 6</span>
         <h1>Stem Separation Review</h1>
-        <span className="sub">Find any bleed between vocals and instrumental, then reassign it.</span>
+        <span className="sub">Review all three tracks, move audio between them, then pick your vocal track.</span>
       </div>
       <div className="bleed-summary">
         <button className="stat-chip" onClick={onFocusFlags}>
           <span className="ms sz-14" style={{ color: '#fb923c' }}>flag</span>
           <span className="v">{stats.flags}</span>
-          <span className="stat-label">{stats.flags === 1 ? 'flag' : 'flags'}</span>
+          <span className="stat-label">flags</span>
         </button>
+        <div className="divider-v tall" />
         <button className="stat-chip" onClick={onFocusCorrections}>
-          <span className="ms sz-14" style={{ color: 'var(--white-50)' }}>history</span>
+          <span className="ms sz-14">swap_horiz</span>
           <span className="v">{stats.corrections}</span>
-          <span className="stat-label">{stats.corrections === 1 ? 'correction' : 'corrections'}</span>
+          <span className="stat-label">corrections</span>
         </button>
       </div>
       <div className="substage-right">
-        <button className={`mark-toggle ${confirmed ? 'on' : ''}`} onClick={onConfirmToggle}>
-          <span className={`mark-box ${confirmed ? 'on' : ''}`}>
+        <button
+          className={`mark-toggle ${confirmed ? 'on' : ''}`}
+          onClick={onConfirmToggle}
+          title={confirmed ? 'Mark as not reviewed' : 'Mark as reviewed'}
+        >
+          <div className={`mark-box ${confirmed ? 'on' : ''}`}>
             {confirmed && <span className="ms sz-14">check</span>}
-          </span>
-          {confirmed ? 'Reviewed' : 'Mark as reviewed'}
+          </div>
+          <span>Reviewed</span>
         </button>
         <div className="project-actions" ref={actionsRef}>
-          <button className={`iconbtn ${actionsOpen ? 'active' : ''}`} onClick={() => setActionsOpen((v) => !v)}>
-            <span className="ms sz-20">more_horiz</span>
+          <button className="btn ghost" onClick={() => setActionsOpen((v) => !v)}>
+            <span className="ms sz-16">more_horiz</span>
+            <span>Project</span>
           </button>
           {actionsOpen && (
             <div className="rail-menu project-menu" onMouseDown={(e) => e.stopPropagation()}>
-              <div className="rail-menu-head">
-                <div className="rail-menu-name">Project actions</div>
-                <div className="rail-menu-file mono">stage 1 — stems</div>
-              </div>
+              <div className="rail-menu-head"><div className="rail-menu-name">Project actions</div></div>
               <button className="rail-menu-item" onClick={() => { setActionsOpen(false); onProjectAction?.('export-both'); }}>
                 <span className="ms sz-16">file_download</span>
                 <span>Export both stems</span>
@@ -145,11 +167,16 @@ function Ruler({ contentWidth, viewportWidth, scrollLeft, duration, fps = 24 }) 
 }
 
 // ── TrackRail ──────────────────────────────────────────────────
-function TrackRail({ trackId, label, sublabel, muted, soloed, onToggleMute, onToggleSolo, jobId }) {
+function TrackRail({ trackId, label, sublabel, muted, soloed, onToggleMute, onToggleSolo, jobId, isWinner, onSelectWinner }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(label);
   const rootRef = useRef(null);
+
+  const canRename = trackId === 'voc' || trackId === 'ins';
+  const canSolo   = trackId === 'voc' || trackId === 'ins';
+  const STEM_MAP  = { voc: 'vocals', htd: 'htdemucs_vocals', ins: 'instrumental' };
+  const FILE_MAP  = { voc: 'vocals.wav', htd: 'htdemucs_vocals.wav', ins: 'instrumental.wav' };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -167,18 +194,19 @@ function TrackRail({ trackId, label, sublabel, muted, soloed, onToggleMute, onTo
   };
 
   const handleExport = () => {
-    const stem = trackId === 'voc' ? 'vocals' : 'instrumental';
     const a = document.createElement('a');
-    a.href = exportUrl(jobId, stem);
+    a.href = exportUrl(jobId, STEM_MAP[trackId] || trackId);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setMenuOpen(false);
   };
 
+  const avatarLetter = trackId === 'voc' ? 'V' : trackId === 'htd' ? 'H' : 'I';
+
   return (
     <div className={`rail ${trackId}`} ref={rootRef}>
-      <div className="rail-avatar">{trackId === 'voc' ? 'V' : 'I'}</div>
+      <div className="rail-avatar">{avatarLetter}</div>
       <div className="rail-meta">
         {renaming ? (
           <input
@@ -196,23 +224,41 @@ function TrackRail({ trackId, label, sublabel, muted, soloed, onToggleMute, onTo
         <div className="rail-sublabel">{sublabel}</div>
       </div>
       <div className="rail-controls">
+        {/* Winner radio — shown on vocal tracks */}
+        {onSelectWinner && (
+          <button
+            className={`tiny-toggle winner-radio ${isWinner ? 'active winner' : ''}`}
+            onClick={onSelectWinner}
+            title={isWinner ? 'Selected for diarization output' : 'Use this vocal track for output'}
+          >
+            <span className="ms sz-16">{isWinner ? 'radio_button_checked' : 'radio_button_unchecked'}</span>
+          </button>
+        )}
+        {/* Fixed output indicator for instrumental */}
+        {trackId === 'ins' && (
+          <span className="caps rail-output-tag">OUT</span>
+        )}
         <button className={`tiny-toggle ${menuOpen ? 'active' : ''}`} onClick={() => setMenuOpen((v) => !v)}>
           <span className="ms sz-14">more_horiz</span>
         </button>
         <button className={`tiny-toggle ${muted ? 'active mute' : ''}`} onClick={onToggleMute} title={muted ? 'Unmute' : 'Mute'}>
           <span className="ms sz-16">{muted ? 'volume_off' : 'volume_up'}</span>
         </button>
-        <button className={`tiny-toggle solo ${soloed ? 'active' : ''}`} onClick={onToggleSolo}>S</button>
+        {canSolo && (
+          <button className={`tiny-toggle solo ${soloed ? 'active' : ''}`} onClick={onToggleSolo}>S</button>
+        )}
         {menuOpen && (
           <div className="rail-menu" onMouseDown={(e) => e.stopPropagation()}>
             <div className="rail-menu-head">
               <div className="rail-menu-name">{label} stem</div>
-              <div className="rail-menu-file mono">{trackId === 'voc' ? 'vocals.wav' : 'instrumental.wav'}</div>
+              <div className="rail-menu-file mono">{FILE_MAP[trackId]}</div>
             </div>
-            <button className="rail-menu-item" onClick={() => { setRenaming(true); setMenuOpen(false); }}>
-              <span className="ms sz-16">drive_file_rename_outline</span>
-              <span>Rename track</span>
-            </button>
+            {canRename && (
+              <button className="rail-menu-item" onClick={() => { setRenaming(true); setMenuOpen(false); }}>
+                <span className="ms sz-16">drive_file_rename_outline</span>
+                <span>Rename track</span>
+              </button>
+            )}
             <button className="rail-menu-item" onClick={handleExport}>
               <span className="ms sz-16">file_download</span>
               <span>Export stem as WAV</span>
@@ -283,40 +329,52 @@ function Transport({
 }
 
 // ── SelectionFab ───────────────────────────────────────────────
-function SelectionFab({ selection, isFlagged, xOf, scrollLeft, viewportWidth, onMove, onFlag, onDismiss }) {
+function SelectionFab({ selection, isFlagged, xOf, scrollLeft, viewportWidth, fabTop, onMoveTo, onFlag, onDelete, onDismiss }) {
   if (!selection || selection.dragging) return null;
   const dur = Math.abs(selection.end - selection.start);
   if (dur < 0.05) return null;
 
-  const isVoc = selection.trackId === 'voc';
-  const targetLabel = isVoc ? 'Instrumental' : 'Vocals';
-  const arrowIcon = isVoc ? 'south' : 'north';
-  const arrowColor = isVoc ? 'var(--ins-accent)' : 'var(--voc-accent)';
-  const kbd = isVoc ? 'I' : 'V';
+  const tid = selection.trackId;
+  const dests = MOVE_OPTS[tid] || [];
+  const ACCENT = { voc: '#7dbcff', htd: '#a78bfa', ins: '#5eead4' };
 
   const a = xOf(Math.min(selection.start, selection.end)) - scrollLeft;
   const b = xOf(Math.max(selection.start, selection.end)) - scrollLeft;
   const mid = (a + b) / 2;
-  const fabWidth = 360;
+  const fabWidth = 480;
   const fabLeft = Math.max(8, Math.min(viewportWidth - fabWidth - 8, mid - fabWidth / 2));
 
   return (
-    <div className="fab" style={{ left: fabLeft, top: 'calc(36px + var(--track-h) - 18px)' }} onMouseDown={(e) => e.stopPropagation()}>
-      <span className="arrow" style={{ background: arrowColor, color: '#022' }}>
-        <span className="ms sz-14">{arrowIcon}</span>
+    <div className="fab" style={{ left: fabLeft, top: fabTop }} onMouseDown={(e) => e.stopPropagation()}>
+      <span className="arrow" style={{ background: ACCENT[tid] || 'var(--fg)', color: '#022' }}>
+        <span className="ms sz-14">swap_horiz</span>
       </span>
       <div className="fab-info">
         <div className="range mono">{dur.toFixed(2)}s</div>
       </div>
+
+      {dests.map((d) => (
+        <button
+          key={d.id}
+          className="go"
+          style={{ background: d.color, border: `1px solid ${d.border}`, color: d.text }}
+          onClick={() => onMoveTo(d.id)}
+        >
+          <span className="ms sz-14">{d.icon}</span>
+          <span>→ {d.label}</span>
+          <span className="kbd" style={{ background: 'rgba(0,0,0,0.15)', color: d.text }}>{d.key}</span>
+        </button>
+      ))}
+
       <button className={`fab-secondary ${isFlagged ? 'is-flagged' : ''}`} onClick={onFlag}>
         <span className="ms sz-14">{isFlagged ? 'close' : 'flag'}</span>
         <span>{isFlagged ? 'Unflag' : 'Flag'}</span>
         <span className="kbd">F</span>
       </button>
-      <button className="go" onClick={onMove}>
-        <span className="ms sz-14">{arrowIcon}</span>
-        <span>Move to {targetLabel}</span>
-        <span className="kbd">{kbd}</span>
+      <button className="fab-delete" onClick={onDelete}>
+        <span className="ms sz-14">delete</span>
+        <span>Delete</span>
+        <span className="kbd">D</span>
       </button>
       <button className="x" onClick={onDismiss}><span className="ms sz-16">close</span></button>
     </div>
@@ -359,18 +417,20 @@ function HistoryPanel({ corrections, flags, onUndo, onRemoveFlag, onFocusFlag, o
             <div className="sub">
               {activeTab === 'flags'
                 ? 'Drag-select a range, then press F or click Flag.'
-                : 'Drag-select a range on either waveform, then choose where to move it.'}
+                : 'Drag-select a range on any waveform, then move or delete it.'}
             </div>
           </div>
         ) : activeTab === 'corrections' ? (
           corrections.map((c) => (
             <div key={c.id} className="hist-item" onClick={() => onFocusCorrection?.(c)}>
-              <div className={`dir from-${c.from}`}><span className="ms sz-14">{c.from === 'voc' ? 'south' : 'north'}</span></div>
+              <div className={`dir from-${c.from}`}>
+                <span className="ms sz-14">{TRACK_ICON[c.from] || 'swap_horiz'}</span>
+              </div>
               <div className="info">
                 <div className="desc">
-                  <b>{c.from === 'voc' ? 'Vocals' : 'Instrumental'}</b>
+                  <b>{TRACK_LABEL[c.from] || c.from}</b>
                   <span style={{ color: 'var(--white-50)' }}> → </span>
-                  <b>{c.to === 'voc' ? 'Vocals' : 'Instrumental'}</b>
+                  <b>{c.to ? (TRACK_LABEL[c.to] || c.to) : 'Deleted'}</b>
                 </div>
                 <div className="range">{fmtTC(c.start, fps)} – {fmtTC(c.end, fps)}<span style={{ marginLeft: 6, opacity: 0.7 }}>· {(c.end - c.start).toFixed(2)}s</span></div>
               </div>
@@ -384,7 +444,7 @@ function HistoryPanel({ corrections, flags, onUndo, onRemoveFlag, onFocusFlag, o
             <div key={f.id} className="hist-item" onClick={() => onFocusFlag?.(f)}>
               <div className="dir flag-dir"><span className="ms sz-14">flag</span></div>
               <div className="info">
-                <div className="desc"><b>{f.trackId === 'voc' ? 'Vocals' : 'Instrumental'}</b><span style={{ color: 'var(--white-50)' }}> · flagged</span></div>
+                <div className="desc"><b>{TRACK_LABEL[f.trackId] || f.trackId}</b><span style={{ color: 'var(--white-50)' }}> · flagged</span></div>
                 <div className="range">{fmtTC(f.start, fps)} – {fmtTC(f.end, fps)}<span style={{ marginLeft: 6, opacity: 0.7 }}>· {(f.end - f.start).toFixed(2)}s</span></div>
               </div>
               <div className="actions">
@@ -404,14 +464,16 @@ function ShortcutsPopover() {
     <div className="shortcuts-pop">
       <h4>Keyboard</h4>
       {[
-        { lbl: 'Play / pause',         keys: ['Space'] },
-        { lbl: 'Step ±1 frame',        keys: ['←', '→'] },
-        { lbl: 'Move to vocals',        keys: ['V'] },
-        { lbl: 'Move to instrumental',  keys: ['I'] },
-        { lbl: 'Flag selection',        keys: ['F'] },
-        { lbl: 'Undo',                  keys: ['Z'] },
-        { lbl: 'Redo',                  keys: ['⇧Z', 'Y'] },
-        { lbl: 'Clear selection',       keys: ['Esc'] },
+        { lbl: 'Play / pause',             keys: ['Space'] },
+        { lbl: 'Step ±1 frame',            keys: ['←', '→'] },
+        { lbl: 'Move to EL Vocals',        keys: ['V'] },
+        { lbl: 'Move to HTDemucs Vocals',  keys: ['H'] },
+        { lbl: 'Move to Instrumental',     keys: ['I'] },
+        { lbl: 'Delete selection',         keys: ['D'] },
+        { lbl: 'Flag selection',           keys: ['F'] },
+        { lbl: 'Undo',                     keys: ['Z'] },
+        { lbl: 'Redo',                     keys: ['⇧Z', 'Y'] },
+        { lbl: 'Clear selection',          keys: ['Esc'] },
       ].map((r, i) => (
         <div className="row" key={i}>
           <span>{r.lbl}</span>
@@ -473,15 +535,19 @@ function Scrollbar({ contentWidth, viewportWidth, scrollLeft, onScroll }) {
 }
 
 // ── SaveContinueModal ──────────────────────────────────────────
-function SaveContinueModal({ stats, flags, jobId, onCancel }) {
+function SaveContinueModal({ stats, flags, jobId, vocalWinner, onVocalWinnerChange, hasHtd, onCancel }) {
   const [phase, setPhase] = useState('review');
   const totalFlags = flags.length;
 
   const handleConfirm = async () => {
     setPhase('saving');
-    try { await confirmStems(jobId); } catch (err) { console.error('[confirm-stems]', err); }
+    try { await confirmStems(jobId, vocalWinner); } catch (err) { console.error('[confirm-stems]', err); }
     setPhase('done');
   };
+
+  const winnerLabel = vocalWinner === 'htd' ? 'HTDemucs Vocals' : 'ElevenLabs Vocals';
+  const winnerIcon  = vocalWinner === 'htd' ? 'merge' : 'mic';
+  const winnerColor = vocalWinner === 'htd' ? '#a78bfa' : '#7dbcff';
 
   return (
     <div className="modal-scrim" onMouseDown={onCancel}>
@@ -503,6 +569,37 @@ function SaveContinueModal({ stats, flags, jobId, onCancel }) {
             </div>
             <h3>Lock in stem assignments?</h3>
             <p>Your corrections become the source-of-truth for downstream stages.</p>
+
+            {/* Vocal track winner selection */}
+            {hasHtd && (
+              <div className="vocal-winner-section">
+                <div className="vocal-winner-label caps" style={{ marginBottom: 8, color: 'var(--white-50)' }}>Vocal track for diarization</div>
+                <div className="vocal-winner-options">
+                  {[
+                    { id: 'voc', label: 'ElevenLabs Vocals', icon: 'mic', color: '#7dbcff' },
+                    { id: 'htd', label: 'HTDemucs Vocals',   icon: 'merge', color: '#a78bfa' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      className={`vocal-winner-btn ${vocalWinner === opt.id ? 'active' : ''}`}
+                      onClick={() => onVocalWinnerChange(opt.id)}
+                      style={{ '--winner-color': opt.color }}
+                    >
+                      <span className="ms sz-18" style={{ color: vocalWinner === opt.id ? opt.color : 'var(--white-30)' }}>
+                        {vocalWinner === opt.id ? 'radio_button_checked' : 'radio_button_unchecked'}
+                      </span>
+                      <span className="ms sz-14" style={{ color: opt.color }}>{opt.icon}</span>
+                      <span>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--white-40)', marginTop: 8 }}>
+                  <span className="ms sz-12" style={{ verticalAlign: 'middle', marginRight: 4 }}>info</span>
+                  Instrumental is always HTDemucs (bass + drums + other).
+                </div>
+              </div>
+            )}
+
             <div className="save-stats">
               <div className="save-stat">
                 <div className="save-stat-v mono">{stats.corrections}</div>
@@ -523,6 +620,13 @@ function SaveContinueModal({ stats, flags, jobId, onCancel }) {
               <div className="save-warn">
                 <span className="ms sz-16">warning</span>
                 <span>{totalFlags} flag{totalFlags === 1 ? '' : 's'} still unresolved — they'll carry forward.</span>
+              </div>
+            )}
+            {hasHtd && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid var(--white-10)', marginBottom: 16, fontSize: 12 }}>
+                <span className="ms sz-16" style={{ color: winnerColor }}>{winnerIcon}</span>
+                <span style={{ color: 'var(--white-60)' }}>Vocal output: </span>
+                <span style={{ color: winnerColor, fontWeight: 500 }}>{winnerLabel}</span>
               </div>
             )}
             <div className="save-actions">
@@ -576,11 +680,11 @@ function ErrorOverlay({ message, onRetry, onNewUpload }) {
 }
 
 // ── Editor (main) ──────────────────────────────────────────────
-export default function Editor({ jobId, jobData, vocWave, insWave, appState, errorMessage, onRetry, onNewUpload }) {
+export default function Editor({ jobId, jobData, vocWave, insWave, htdWave, appState, errorMessage, onRetry, onNewUpload }) {
   const D   = jobData?.duration_s ?? 134;
   const FPS = jobData?.fps ?? 24;
   const sourceFilename = jobData?.source_filename ?? 'source';
-  const vocLabel = jobData?.vocals_label ?? 'Vocals';
+  const vocLabel = jobData?.vocals_label ?? 'EL Vocals';
   const insLabel = jobData?.instrumental_label ?? 'Instrumental';
 
   // ── Audio engine ──────────────────────────────────────────
@@ -591,11 +695,15 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
     if (!jobId) return;
     const engine = new AudioEngine();
     engineRef.current = engine;
-    engine.load(audioUrl(jobId, 'vocals'), audioUrl(jobId, 'instrumental'))
+    engine.load(
+      audioUrl(jobId, 'vocals'),
+      htdWave ? audioUrl(jobId, 'htdemucs_vocals') : null,
+      audioUrl(jobId, 'instrumental'),
+    )
       .then(() => setAudioReady(true))
       .catch((err) => console.error('[audio] load failed:', err));
     return () => { engine.destroy(); engineRef.current = null; setAudioReady(false); };
-  }, [jobId]);
+  }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Playback state ────────────────────────────────────────
   const [currentTime, setCurrentTime] = useState(0);
@@ -605,17 +713,22 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
 
   const [vocMuted, setVocMuted] = useState(false);
   const [insMuted, setInsMuted] = useState(false);
+  const [htdMuted, setHtdMuted] = useState(false);
   const [vocSolo, setVocSolo]   = useState(false);
   const [insSolo, setInsSolo]   = useState(false);
 
-  // Sync enabled state to engine whenever mute/solo changes
+  // Which vocal track to use as final output
+  const [vocalWinner, setVocalWinner] = useState('voc');
+
+  // Sync mute/solo to engine
   useEffect(() => {
     const vocEnabled = !(vocMuted || (insSolo && !vocSolo));
+    const htdEnabled = !htdMuted;
     const insEnabled = !(insMuted || (vocSolo && !insSolo));
-    engineRef.current?.setEnabled(vocEnabled, insEnabled);
-  }, [vocMuted, insMuted, vocSolo, insSolo]);
+    engineRef.current?.setEnabled(vocEnabled, htdEnabled, insEnabled);
+  }, [vocMuted, htdMuted, insMuted, vocSolo, insSolo]);
 
-  // RAF loop — reads currentTime from the engine clock while playing
+  // RAF loop
   useEffect(() => {
     if (!playing) return;
     let raf;
@@ -668,8 +781,6 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
   const laneColRef = useRef(null);
   const [viewportWidth, setViewportWidth] = useState(800);
 
-  // Non-passive wheel listener so preventDefault works (blocks browser pinch-zoom)
-  // and gives us ctrlKey for trackpad pinch detection.
   const _wheelState = useRef({ contentWidth: 0, viewportWidth: 0 });
   useEffect(() => {
     const el = laneColRef.current;
@@ -733,23 +844,37 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
   }, [manualFlags, jobId]);
 
   // ── Regions ───────────────────────────────────────────────
+  // Generic 3-track region computation from corrections list
   const regions = useMemo(() => {
-    const voc = [], ins = [];
+    const tracks = { voc: [], htd: [], ins: [] };
     for (const c of corrections) {
-      if (c.from === 'voc') {
-        voc.push({ kind: 'silenced', start: c.start, end: c.end, title: `Moved to instrumental` });
-        ins.push({ kind: 'grafted',  from: 'voc', start: c.start, end: c.end, title: `From vocals` });
-      } else {
-        ins.push({ kind: 'silenced', start: c.start, end: c.end, title: `Moved to vocals` });
-        voc.push({ kind: 'grafted',  from: 'ins', start: c.start, end: c.end, title: `From instrumental` });
+      const to = c.to ?? null;
+      if (tracks[c.from] !== undefined) {
+        tracks[c.from].push({
+          kind: 'silenced',
+          deleted: to === null,
+          start: c.start,
+          end: c.end,
+          title: to === null ? 'Deleted' : `Moved to ${TRACK_LABEL[to] ?? to}`,
+        });
+      }
+      if (to !== null && tracks[to] !== undefined) {
+        tracks[to].push({
+          kind: 'grafted',
+          from: c.from,
+          start: c.start,
+          end: c.end,
+          title: `From ${TRACK_LABEL[c.from] ?? c.from}`,
+        });
       }
     }
-    return { voc, ins };
+    return tracks;
   }, [corrections]);
 
   const remainingBleeds = useMemo(() => ({
-    voc: manualFlags.filter((f) => f.trackId === 'voc').map((f) => ({ id: f.id, s: f.start, e: f.end, kind: 'manual' })),
-    ins: manualFlags.filter((f) => f.trackId === 'ins').map((f) => ({ id: f.id, s: f.start, e: f.end, kind: 'manual' })),
+    voc: manualFlags.filter((f) => f.trackId === 'voc').map((f) => ({ id: f.id, s: f.start, e: f.end })),
+    htd: manualFlags.filter((f) => f.trackId === 'htd').map((f) => ({ id: f.id, s: f.start, e: f.end })),
+    ins: manualFlags.filter((f) => f.trackId === 'ins').map((f) => ({ id: f.id, s: f.start, e: f.end })),
   }), [manualFlags]);
 
   const flagForSelection = useMemo(() => {
@@ -759,13 +884,38 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
     return manualFlags.find((f) => f.trackId === selection.trackId && Math.abs(f.start - a) < 0.05 && Math.abs(f.end - b) < 0.05) || null;
   }, [selection, manualFlags]);
 
+  // ── FAB positioning ───────────────────────────────────────
+  // Top offset of FAB: positioned just below the selected track's lane
+  const RULER_H = 36, LANE_H = 104;
+  const fabTop = useMemo(() => {
+    if (!selection) return 0;
+    const htdH = htdWave ? LANE_H : 0;
+    switch (selection.trackId) {
+      case 'voc': return RULER_H + LANE_H - 18;
+      case 'htd': return RULER_H + LANE_H + LANE_H - 18;
+      case 'ins': return RULER_H + LANE_H + htdH + LANE_H - 18;
+      default:    return RULER_H + LANE_H - 18;
+    }
+  }, [selection, htdWave]);
+
   // ── Actions ───────────────────────────────────────────────
   const moveSelectionTo = useCallback((target) => {
-    if (!selection || selection.dragging || target === selection.trackId) return;
+    if (!selection || selection.dragging) return;
+    if (target === selection.trackId) return;
     const a = Math.min(selection.start, selection.end);
     const b = Math.max(selection.start, selection.end);
     if (b - a < 0.05) return;
     setCorrections((arr) => [{ id: `u${Date.now()}`, from: selection.trackId, to: target, start: a, end: b }, ...arr]);
+    setRedoStack([]);
+    setSelection(null);
+  }, [selection]);
+
+  const deleteSelection = useCallback(() => {
+    if (!selection || selection.dragging) return;
+    const a = Math.min(selection.start, selection.end);
+    const b = Math.max(selection.start, selection.end);
+    if (b - a < 0.05) return;
+    setCorrections((arr) => [{ id: `u${Date.now()}`, from: selection.trackId, to: null, start: a, end: b }, ...arr]);
     setRedoStack([]);
     setSelection(null);
   }, [selection]);
@@ -815,7 +965,9 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
       else if (e.key === 'ArrowLeft')  { e.preventDefault(); seekTo(currentTime - 1 / FPS); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); seekTo(currentTime + 1 / FPS); }
       else if (e.key === 'v' || e.key === 'V') moveSelectionTo('voc');
+      else if (e.key === 'h' || e.key === 'H') moveSelectionTo('htd');
       else if (e.key === 'i' || e.key === 'I') moveSelectionTo('ins');
+      else if (e.key === 'd' || e.key === 'D') deleteSelection();
       else if (e.key === 'f' || e.key === 'F') flagSelection();
       else if (e.key === 'z' || e.key === 'Z') { if (e.shiftKey) redoLast(); else undoLast(); }
       else if (e.key === 'y' || e.key === 'Y') redoLast();
@@ -824,7 +976,7 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [togglePlay, seekTo, moveSelectionTo, flagSelection, undoLast, redoLast, currentTime, FPS]);
+  }, [togglePlay, seekTo, moveSelectionTo, deleteSelection, flagSelection, undoLast, redoLast, currentTime, FPS]);
 
   const stats = useMemo(() => ({
     flags: manualFlags.length,
@@ -845,6 +997,8 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
   };
 
   const isError = appState === 'error';
+  const hasHtd = !!htdWave;
+  const trackCount = hasHtd ? 3 : 2;
 
   return (
     <div className="app">
@@ -884,47 +1038,113 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
       <div className={`body ${historyCollapsed ? 'history-collapsed' : ''} ${isError ? 'no-history' : ''}`}>
         <div className="workspace">
           <div className="timeline">
+            {/* ── Rail column ─────────────────────────────────── */}
             <div className="rail-col">
               <div className="rail-head">
                 <span className="caps">TRACKS</span>
-                <span style={{ marginLeft: 'auto', color: 'var(--white-30)' }} className="mono">2 / 2</span>
+                <span style={{ marginLeft: 'auto', color: 'var(--white-30)' }} className="mono">{trackCount} / {trackCount}</span>
               </div>
-              <TrackRail trackId="voc" label={vocLabel} sublabel="Speech track"
+
+              {/* ElevenLabs Vocals rail */}
+              <TrackRail
+                trackId="voc" label={vocLabel} sublabel="ElevenLabs isolation"
                 muted={vocMuted} soloed={vocSolo}
-                onToggleMute={() => setVocMuted((v) => !v)} onToggleSolo={() => setVocSolo((v) => !v)}
-                jobId={jobId} />
-              <TrackRail trackId="ins" label={insLabel} sublabel="Music & ambience"
+                onToggleMute={() => setVocMuted((v) => !v)}
+                onToggleSolo={() => setVocSolo((v) => !v)}
+                jobId={jobId}
+                isWinner={vocalWinner === 'voc'}
+                onSelectWinner={() => setVocalWinner('voc')}
+              />
+
+              {/* HTDemucs Vocals rail — always visible when data is available */}
+              {hasHtd && (
+                <TrackRail
+                  trackId="htd" label="HTDemucs Vocals" sublabel="Model separation"
+                  muted={htdMuted} soloed={false}
+                  onToggleMute={() => setHtdMuted((v) => !v)}
+                  onToggleSolo={() => {}}
+                  jobId={jobId}
+                  isWinner={vocalWinner === 'htd'}
+                  onSelectWinner={() => setVocalWinner('htd')}
+                />
+              )}
+
+              {/* Instrumental rail */}
+              <TrackRail
+                trackId="ins" label={insLabel} sublabel="HTDemucs instrumental"
                 muted={insMuted} soloed={insSolo}
-                onToggleMute={() => setInsMuted((v) => !v)} onToggleSolo={() => setInsSolo((v) => !v)}
-                jobId={jobId} />
+                onToggleMute={() => setInsMuted((v) => !v)}
+                onToggleSolo={() => setInsSolo((v) => !v)}
+                jobId={jobId}
+              />
             </div>
 
+            {/* ── Lane column ─────────────────────────────────── */}
             <div className="lane-col" ref={laneColRef}>
               <div onClick={onRulerSeek} style={{ cursor: 'ew-resize' }}>
                 <Ruler contentWidth={contentWidth} viewportWidth={viewportWidth} scrollLeft={scrollLeft} duration={D} fps={FPS} />
               </div>
 
-              <Lane trackId="voc" data={vocWave ?? []} otherData={insWave ?? []}
-                color="#7dbcff" dimColor="rgba(96,165,250,0.18)" otherColor="#5eead4"
-                regions={regions.voc} bleeds={remainingBleeds.voc} onFlagClick={(tid, s, e) => setSelection({ trackId: tid, start: s, end: e, dragging: false })}
-                muted={vocMuted || (insSolo && !vocSolo)}
-                contentWidth={contentWidth} viewportWidth={viewportWidth} scrollLeft={scrollLeft} duration={D}
-                selection={selection} onSelectionChange={setSelection} laneHeight={104} fps={FPS} />
+              {/* Shared waveform lookup for 3-track graft rendering */}
+              {(() => {
+                const allWaves = { voc: vocWave ?? [], htd: htdWave ?? [], ins: insWave ?? [] };
+                return (
+                  <>
+                    {/* ElevenLabs Vocals lane */}
+                    <Lane
+                      trackId="voc" data={vocWave ?? []} otherData={insWave ?? []} htdData={htdWave ?? []}
+                      allWaves={allWaves}
+                      color="#7dbcff" dimColor="rgba(96,165,250,0.18)" otherColor="#5eead4"
+                      regions={regions.voc} bleeds={remainingBleeds.voc}
+                      onFlagClick={(tid, s, e) => setSelection({ trackId: tid, start: s, end: e, dragging: false })}
+                      muted={vocMuted || (insSolo && !vocSolo)}
+                      contentWidth={contentWidth} viewportWidth={viewportWidth} scrollLeft={scrollLeft} duration={D}
+                      selection={selection} onSelectionChange={setSelection} laneHeight={LANE_H} fps={FPS}
+                    />
 
-              <Lane trackId="ins" data={insWave ?? []} otherData={vocWave ?? []}
-                color="#5eead4" dimColor="rgba(94,234,212,0.18)" otherColor="#7dbcff"
-                regions={regions.ins} bleeds={remainingBleeds.ins} onFlagClick={(tid, s, e) => setSelection({ trackId: tid, start: s, end: e, dragging: false })}
-                muted={insMuted || (vocSolo && !insSolo)}
-                contentWidth={contentWidth} viewportWidth={viewportWidth} scrollLeft={scrollLeft} duration={D}
-                selection={selection} onSelectionChange={setSelection} laneHeight={104} fps={FPS} />
+                    {/* HTDemucs Vocals lane */}
+                    {hasHtd && (
+                      <Lane
+                        trackId="htd" data={htdWave} otherData={vocWave ?? []} htdData={htdWave ?? []}
+                        allWaves={allWaves}
+                        color="#a78bfa" dimColor="rgba(167,139,250,0.15)" otherColor="#7dbcff"
+                        regions={regions.htd} bleeds={remainingBleeds.htd}
+                        onFlagClick={(tid, s, e) => setSelection({ trackId: tid, start: s, end: e, dragging: false })}
+                        muted={htdMuted}
+                        contentWidth={contentWidth} viewportWidth={viewportWidth} scrollLeft={scrollLeft} duration={D}
+                        selection={selection} onSelectionChange={setSelection} laneHeight={LANE_H} fps={FPS}
+                      />
+                    )}
+
+                    {/* Instrumental lane */}
+                    <Lane
+                      trackId="ins" data={insWave ?? []} otherData={vocWave ?? []} htdData={htdWave ?? []}
+                      allWaves={allWaves}
+                      color="#5eead4" dimColor="rgba(94,234,212,0.18)" otherColor="#7dbcff"
+                      regions={regions.ins} bleeds={remainingBleeds.ins}
+                      onFlagClick={(tid, s, e) => setSelection({ trackId: tid, start: s, end: e, dragging: false })}
+                      muted={insMuted || (vocSolo && !insSolo)}
+                      contentWidth={contentWidth} viewportWidth={viewportWidth} scrollLeft={scrollLeft} duration={D}
+                      selection={selection} onSelectionChange={setSelection} laneHeight={LANE_H} fps={FPS}
+                    />
+                  </>
+                );
+              })()}
 
               <Playhead currentTime={currentTime} pxPerSec={pxPerSec} scrollLeft={scrollLeft} viewportWidth={viewportWidth} fps={FPS} />
 
               <SelectionFab
-                selection={selection} isFlagged={!!flagForSelection}
-                xOf={(s) => s * pxPerSec} scrollLeft={scrollLeft} viewportWidth={viewportWidth}
-                onMove={() => moveSelectionTo(selection?.trackId === 'voc' ? 'ins' : 'voc')}
-                onFlag={flagSelection} onDismiss={() => setSelection(null)} />
+                selection={selection}
+                isFlagged={!!flagForSelection}
+                xOf={(s) => s * pxPerSec}
+                scrollLeft={scrollLeft}
+                viewportWidth={viewportWidth}
+                fabTop={fabTop}
+                onMoveTo={moveSelectionTo}
+                onFlag={flagSelection}
+                onDelete={deleteSelection}
+                onDismiss={() => setSelection(null)}
+              />
 
               <Scrollbar contentWidth={contentWidth} viewportWidth={viewportWidth} scrollLeft={scrollLeft} onScroll={setScrollLeft} />
             </div>
@@ -948,7 +1168,12 @@ export default function Editor({ jobId, jobData, vocWave, insWave, appState, err
       </div>
 
       {saveModalOpen && (
-        <SaveContinueModal stats={stats} flags={manualFlags} jobId={jobId} onCancel={() => setSaveModalOpen(false)} />
+        <SaveContinueModal
+          stats={stats} flags={manualFlags} jobId={jobId}
+          vocalWinner={vocalWinner} onVocalWinnerChange={setVocalWinner}
+          hasHtd={hasHtd}
+          onCancel={() => setSaveModalOpen(false)}
+        />
       )}
     </div>
   );

@@ -28,5 +28,8 @@ numpy>=1.26.0,<2.0.0         # librosa 0.10.x requires numpy <2
 # [gpu] bundles CUDA PyTorch — only installable on Linux x86 with CUDA drivers.
 # Max available version as of 2025: 0.18.0.
 #
-# The first run downloads the BS-RoFormer checkpoint (~200 MB) to SEPARATOR_MODEL_DIR.
+# HTDemucs-FT downloads ~300 MB checkpoint on first run to SEPARATOR_MODEL_DIR.
 audio-separator[cpu]>=0.17.0
+
+# ── ElevenLabs (audio isolation for vocals track) ─────────────────────────────
+elevenlabs>=1.0.0

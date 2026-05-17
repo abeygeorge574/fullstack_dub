@@ -4,7 +4,7 @@ import { fmtTC } from '../utils/timecode.js';
 export function WaveformCanvas({
   data, color, dimColor, width, height,
   lit, clipStart = 0, clipEnd = 1,
-  barW: barWProp = 1.2, gap: gapProp = 1.2,
+  barW: barWProp = 1.0, gap: gapProp = 0.5,
 }) {
   const ref = useRef(null);
 
@@ -90,7 +90,8 @@ function SelectionOverlay({ selection, xOf, scrollLeft }) {
 }
 
 export function Lane({
-  trackId, data, otherData, color, dimColor, otherColor,
+  trackId, data, otherData, htdData, color, dimColor, otherColor,
+  allWaves,  // { voc, htd, ins } — preferred over otherData for 3-track grafts
   regions, bleeds, onFlagClick,
   muted,
   contentWidth, viewportWidth, scrollLeft, duration,
@@ -192,14 +193,21 @@ export function Lane({
           if (left + w < 0 || left > viewportWidth) return null;
           if (r.kind === 'silenced') {
             return (
-              <div key={i} className="region silenced" style={{ left, width: w }} title={r.title}>
-                <span className="ms sz-14 icon">block</span>
+              <div key={i} className={`region silenced ${r.deleted ? 'deleted' : ''}`} style={{ left, width: w }} title={r.title}>
+                <span className="ms sz-14 icon">{r.deleted ? 'cut' : 'block'}</span>
               </div>
             );
           }
-          const cls = r.from === 'voc' ? 'from-voc' : 'from-ins';
+          const isHtd = r.from === 'htd';
+          const cls = r.from === 'voc' ? 'from-voc' : isHtd ? 'from-htd' : 'from-ins';
           const clipStart = r.start / duration;
           const clipEnd = r.end / duration;
+          const graftColor = isHtd ? '#a78bfa' : otherColor;
+          // Pick source waveform: allWaves map is preferred for 3-track accuracy
+          const sourceData = allWaves
+            ? (allWaves[r.from] ?? otherData)
+            : isHtd ? (htdData ?? otherData) : otherData;
+          const badgeLabel = isHtd ? 'htdemucs' : r.from === 'voc' ? 'vocals' : 'instrumental';
           return (
             <div
               key={i}
@@ -208,20 +216,20 @@ export function Lane({
               title={r.title}
             >
               <WaveformCanvas
-                data={otherData}
-                color={muted ? 'rgba(255,255,255,0.22)' : otherColor}
-                dimColor={muted ? 'rgba(255,255,255,0.10)' : otherColor}
+                data={sourceData}
+                color={muted ? 'rgba(255,255,255,0.22)' : graftColor}
+                dimColor={muted ? 'rgba(255,255,255,0.10)' : graftColor}
                 width={w}
                 height={laneHeight - 8}
                 clipStart={clipStart}
                 clipEnd={clipEnd}
-                barW={1.2}
-                gap={1.2}
+                barW={1.0}
+                gap={0.5}
                 lit={!muted}
               />
               <span className="badge">
-                <span className="ms sz-14" style={{ fontSize: 11 }}>swap_horiz</span>
-                from {r.from === 'voc' ? 'vocals' : 'instrumental'}
+                <span className="ms sz-14" style={{ fontSize: 11 }}>{isHtd ? 'merge' : 'swap_horiz'}</span>
+                from {badgeLabel}
               </span>
             </div>
           );

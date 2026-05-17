@@ -1,48 +1,62 @@
 /**
- * Web Audio API playback engine.
+ * Web Audio API playback engine — 3-track (voc / htd / ins).
  *
- * Applies corrections in real-time:
- *   - Silences regions moved OUT of a track (c.from === trackId)
- *   - Grafts audio from the other track for regions moved IN (c.to === trackId)
+ * Each track can have corrections:
+ *   c.from === trackId  → silence that region on the source track
+ *   c.to   === trackId  → graft audio from c.from buffer into this track
  *
- * On every play/seek/correction-change the node graph is rebuilt from scratch.
- * Corrections are assumed non-overlapping (the editor enforces this).
+ * Node graph is rebuilt from scratch on every play/seek/correction change.
  */
 export class AudioEngine {
   constructor() {
     this._ctx = null;
-    this._vocBuffer = null;
-    this._insBuffer = null;
+    this._buffers = { voc: null, htd: null, ins: null };
+    this._enabled = { voc: true, htd: true, ins: true };
     this._playing = false;
     this._startedAt = 0;
     this._offsetAtStart = 0;
     this._nodes = [];
     this._corrections = [];
-    this._vocEnabled = true;
-    this._insEnabled = true;
     this._loaded = false;
   }
 
   get isLoaded() { return this._loaded; }
   get isPlaying() { return this._playing; }
 
-  async load(vocUrl, insUrl) {
+  async load(vocUrl, htdUrl, insUrl) {
     this._ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const [vAB, iAB] = await Promise.all([
-      fetch(vocUrl).then((r) => r.arrayBuffer()),
-      fetch(insUrl).then((r) => r.arrayBuffer()),
+
+    const fetchBuf = async (url) => {
+      if (!url) return null;
+      try {
+        const r = await fetch(url);
+        if (!r.ok) return null;
+        const ab = await r.arrayBuffer();
+        return await this._ctx.decodeAudioData(ab);
+      } catch {
+        return null;
+      }
+    };
+
+    const [vBuf, hBuf, iBuf] = await Promise.all([
+      fetchBuf(vocUrl),
+      fetchBuf(htdUrl),
+      fetchBuf(insUrl),
     ]);
-    [this._vocBuffer, this._insBuffer] = await Promise.all([
-      this._ctx.decodeAudioData(vAB),
-      this._ctx.decodeAudioData(iAB),
-    ]);
-    this._loaded = true;
+    this._buffers = { voc: vBuf, htd: hBuf, ins: iBuf };
+    // Ready when the two primary tracks are loaded
+    this._loaded = !!(vBuf && iBuf);
+    if (!this._loaded) throw new Error('Failed to load voc or ins audio buffer');
+  }
+
+  _maxDuration() {
+    return Math.max(...Object.values(this._buffers).map((b) => b?.duration ?? 0));
   }
 
   getCurrentTime() {
     if (!this._ctx || !this._playing) return this._offsetAtStart;
     return Math.min(
-      this._vocBuffer?.duration ?? Infinity,
+      this._maxDuration(),
       this._offsetAtStart + (this._ctx.currentTime - this._startedAt),
     );
   }
@@ -83,10 +97,15 @@ export class AudioEngine {
     }
   }
 
-  setEnabled(vocEnabled, insEnabled) {
-    if (vocEnabled === this._vocEnabled && insEnabled === this._insEnabled) return;
-    this._vocEnabled = vocEnabled;
-    this._insEnabled = insEnabled;
+  // vocEnabled, htdEnabled, insEnabled
+  setEnabled(vocEnabled, htdEnabled, insEnabled) {
+    const next = { voc: vocEnabled, htd: htdEnabled, ins: insEnabled };
+    if (
+      next.voc === this._enabled.voc &&
+      next.htd === this._enabled.htd &&
+      next.ins === this._enabled.ins
+    ) return;
+    this._enabled = next;
     if (this._playing) {
       const t = this.getCurrentTime();
       this._stopNodes();
@@ -95,7 +114,7 @@ export class AudioEngine {
   }
 
   _startFrom(offset) {
-    const dur = (this._vocBuffer?.duration ?? 0) - offset;
+    const dur = this._maxDuration() - offset;
     if (dur <= 0) { this._offsetAtStart = offset; return; }
     const startWhen = this._ctx.currentTime;
     this._offsetAtStart = offset;
@@ -107,10 +126,10 @@ export class AudioEngine {
     const ctx = this._ctx;
     const cs = this._corrections;
 
-    const buildLayer = (mainBuf, otherBuf, trackId, enabled) => {
-      if (!enabled) return;
+    for (const [trackId, mainBuf] of Object.entries(this._buffers)) {
+      if (!mainBuf || !this._enabled[trackId]) continue;
 
-      // Base layer — full buffer with gain automation to silence moved-out regions
+      // Base layer: full buffer with gain automation for silenced regions
       const src = ctx.createBufferSource();
       src.buffer = mainBuf;
       const gain = ctx.createGain();
@@ -130,21 +149,20 @@ export class AudioEngine {
       src.start(startWhen, offset, duration);
       this._nodes.push(src);
 
-      // Graft layer — play slices from the other buffer for moved-in regions
+      // Graft layer: play slices from source buffer for moved-in regions
       for (const c of cs.filter((c) => c.to === trackId)) {
+        const srcBuf = this._buffers[c.from];
+        if (!srcBuf) continue;
         const clipStart = Math.max(c.start, offset);
         const clipEnd   = Math.min(c.end,   offset + duration);
         if (clipEnd <= clipStart) continue;
         const graft = ctx.createBufferSource();
-        graft.buffer = otherBuf;
+        graft.buffer = srcBuf;
         graft.connect(ctx.destination);
         graft.start(startWhen + (clipStart - offset), clipStart, clipEnd - clipStart);
         this._nodes.push(graft);
       }
-    };
-
-    buildLayer(this._vocBuffer, this._insBuffer, 'voc', this._vocEnabled);
-    buildLayer(this._insBuffer, this._vocBuffer, 'ins', this._insEnabled);
+    }
   }
 
   _stopNodes() {
