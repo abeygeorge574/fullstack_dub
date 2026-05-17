@@ -760,7 +760,9 @@ def _run_translation_bg(job_id: str) -> None:
         job.translation_status = "running"
         db.commit()
         segments = json.loads(job.segments_json or "[]")
-        updated = translate_segments(job_id, segments)
+        updated = translate_segments(job_id, segments,
+                                     source_lang=job.source_lang or "hi",
+                                     target_lang=job.target_lang or "en")
         job.segments_json = json.dumps(updated)
         job.translation_status = "ready"
         db.commit()
